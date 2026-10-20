@@ -92,10 +92,24 @@ async function api(op, payload) {
   return j;
 }
 async function getTorneos(force) { if (!S.torneos || force) S.torneos = (await api('torneos')).torneos; return S.torneos; }
+// La primera vez que la biblioteca está vacía, se crea y se llena sola con los
+// planteles y equipos de las planillas existentes.
 async function getBib(force) {
-  if (!S.bib || force) { const r = await api('biblioteca'); S.bib = { preparada: r.preparada, jugadores: r.jugadores, equipos: r.equipos }; }
+  if (!S.bib || force) {
+    let r = await api('biblioteca');
+    if ((!r.preparada || (!r.jugadores.length && !r.equipos.length)) && !S.autoImportado) {
+      S.autoImportado = true;
+      toast('Armando la biblioteca con los jugadores y equipos de las planillas…');
+      if (!r.preparada) await api('prepararBiblioteca');
+      const imp = await api('importarBiblioteca');
+      toast(`Biblioteca lista: ${imp.jugadoresNuevos} jugadores y ${imp.equiposNuevos} equipos`, 'ok');
+      r = await api('biblioteca');
+    }
+    S.bib = { preparada: r.preparada, jugadores: r.jugadores, equipos: fenixPrimero(r.equipos, 'nombre') };
+  }
   return S.bib;
 }
+const fenixPrimero = (lista, campo) => lista.filter(x => esFenix(x[campo])).concat(lista.filter(x => !esFenix(x[campo])));
 async function getTorneo(id, force) { if (!S.torneo[id] || force) S.torneo[id] = await api('torneo', { id: id }); return S.torneo[id]; }
 
 const cfgCard = () => `<section class="card pad-lg"><span class="kicker">Primer paso</span><h2 class="h2">Conectá el panel</h2>
@@ -278,7 +292,26 @@ async function exportarRecorte(src, enc, fit, size, mime) {
 /* =====================================================================
  *  BIBLIOTECA
  * ===================================================================== */
-const B = { tab: 'jugadores', filtro: 'Todos', q: '', draft: null, pendiente: null };
+const B = { tab: 'jugadores', filtro: 'Todos', q: '', draft: null, pendiente: null, orden: 'numero', asc: true, ascEq: true };
+const ORDEN_JUG = [['numero', 'Número'], ['nombre', 'Nombre'], ['posicion', 'Posición']];
+// Ordena la lista visible. En equipos, FENIX va siempre primero.
+function ordenarBib(lista) {
+  const jug = esJugTab();
+  const campo = jug ? B.orden : 'nombre';
+  const dir = (jug ? B.asc : B.ascEq) ? 1 : -1;
+  const cmpTxt = (a, b) => String(a || '').localeCompare(String(b || ''), 'es', { sensitivity: 'base' });
+  const vacio = v => v === '' || v == null;
+  const out = lista.slice().sort((a, b) => {
+    if (campo === 'numero') {
+      const na = parseInt(a.numero, 10), nb = parseInt(b.numero, 10);
+      if (isNaN(na) !== isNaN(nb)) return isNaN(na) ? 1 : -1; // sin número al final
+      return ((na - nb) || cmpTxt(a.nombre, b.nombre)) * dir;
+    }
+    if (vacio(a[campo]) !== vacio(b[campo])) return vacio(a[campo]) ? 1 : -1;
+    return (cmpTxt(a[campo], b[campo]) || cmpTxt(a.nombre, b.nombre)) * dir;
+  });
+  return jug ? out : fenixPrimero(out, 'nombre');
+}
 const esJugTab = () => B.tab === 'jugadores';
 
 function draftDe(it, tipo) {
@@ -305,7 +338,7 @@ async function pageBiblioteca(tab) {
     return;
   }
   if (!B.draft || B.draft._tipo !== B.tab) {
-    const primero = listaBib().filter(visibleBib)[0];
+    const primero = ordenarBib(listaBib().filter(visibleBib))[0];
     B.draft = primero ? draftDe(primero, B.tab) : null;
   }
   const jug = esJugTab();
@@ -322,7 +355,15 @@ async function pageBiblioteca(tab) {
     </nav>
     <div class="lib">
       <section class="lib-list" aria-label="Catálogo">
-        <div class="pills" role="group" aria-label="Filtrar" id="libFiltros"></div>
+        <div class="row between" style="align-items:flex-start;gap:12px">
+          <div class="pills" role="group" aria-label="Filtrar" id="libFiltros"></div>
+          <div class="row" style="gap:8px">
+            ${jug ? `<label class="sr" for="orden">Ordenar por</label>
+            <select class="select" id="orden" style="width:auto;min-height:44px">${ORDEN_JUG.map(([k, l]) => `<option value="${k}" ${B.orden === k ? 'selected' : ''}>Ordenar por ${l.toLowerCase()}</option>`).join('')}</select>`
+            : '<span class="small muted">Por nombre · FENIX primero</span>'}
+            <button type="button" class="btn sm" id="dir" data-act="dir" style="min-width:96px"></button>
+          </div>
+        </div>
         <div class="lib-grid" id="libGrid"></div>
       </section>
       <section class="editor" id="editor" aria-labelledby="edTitulo"></section>
@@ -330,7 +371,10 @@ async function pageBiblioteca(tab) {
   renderFiltrosBib(); renderGridBib(); renderEditor();
 
   document.getElementById('q').oninput = e => { B.q = e.target.value; renderGridBib(); };
+  const orden = document.getElementById('orden');
+  if (orden) orden.onchange = () => { B.orden = orden.value; B.asc = true; renderGridBib(); };
   bind({
+    dir: () => { if (esJugTab()) B.asc = !B.asc; else B.ascEq = !B.ascEq; renderGridBib(); },
     filtro: el => { B.filtro = el.dataset.f; renderFiltrosBib(); renderGridBib(); },
     sel: el => seleccionarBib(el.dataset.id),
     nuevo: () => {
@@ -364,8 +408,14 @@ function renderFiltrosBib() {
 }
 function renderGridBib() {
   const jug = esJugTab();
-  const items = listaBib().filter(visibleBib);
+  const items = ordenarBib(listaBib().filter(visibleBib));
   const d = B.draft;
+  const asc = jug ? B.asc : B.ascEq;
+  const dirBtn = document.getElementById('dir');
+  if (dirBtn) {
+    dirBtn.textContent = asc ? '↑ Asc' : '↓ Desc';
+    dirBtn.setAttribute('aria-label', asc ? 'Orden ascendente; tocá para descendente' : 'Orden descendente; tocá para ascendente');
+  }
   let html = '';
   if (d && !d.id) {
     html += `<button type="button" class="lib-card" aria-pressed="true" disabled style="opacity:1"><span class="ph${jug ? '' : ' logo'}"><span class="ini">+</span></span><span class="name">${esc(d.nombre || (jug ? 'Nuevo jugador' : 'Nuevo equipo'))}</span><span class="small muted">Sin guardar</span></button>`;
@@ -569,8 +619,8 @@ function asegurarSeleccion() {
   }
   if (!W.equipos) {
     W.equipos = [];
-    const fenix = equiposGenero().find(e => esFenix(e.nombre));
-    if (fenix) W.equipos.push({ id: fenix.id, equipo: fenix.nombre, logo: fenix.logo, categoria: '' });
+    const fenix = S.bib.equipos.find(e => esFenix(e.nombre));
+    W.equipos.push(fenix ? { id: fenix.id, equipo: fenix.nombre, logo: fenix.logo, categoria: '' } : { id: '', equipo: 'FENIX', logo: '', categoria: '' });
   }
 }
 function numerosRepetidos() {
@@ -696,7 +746,7 @@ function renderWizard(error) {
     html = `${cab('¿Qué equipos participan?', `${W.equipos.length} ${W.equipos.length === 1 ? 'equipo' : 'equipos'} en el torneo.`)}
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:1 1 260px">Agregar equipo de la biblioteca
-          <select class="select" id="agregarEq"><option value="">Elegí un equipo</option>${disp.map(e => `<option value="${esc(e.id)}" ${W.agregar === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select>
+          <select class="select" id="agregarEq"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${disp.map(e => `<option value="${esc(e.id)}" ${W.agregar === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select>
           <span class="hint">¿No está? Crealo en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span></label>
         <button type="button" class="btn light" data-act="agregarEq" style="margin-bottom:22px">Agregar</button>
       </div>
@@ -705,7 +755,7 @@ function renderWizard(error) {
           <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 44, { logo: true })}
           <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
           ${cats ? `<label class="sr" for="cat${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="cat${i}" data-cat="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select>` : ''}
-          <button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button></li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
+          ${esFenix(e.equipo) ? '<span class="small" style="color:var(--accent-ink);font-weight:700;padding:0 12px">Tu equipo</span>' : `<button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
   } else if (W.paso === 3) {
     html = `${cab('Fixture', 'Se carga después, desde la pantalla del torneo, cuando la organización lo publique.')}
       <p style="margin:0;padding:16px;border:1px solid var(--line-2)">Al crear el torneo vas directo a cargar los partidos uno por uno: fecha, día, hora, local, visitante y cancha. Los partidos de FENIX abren el anotador; en los demás cargás el resultado y la tabla se arma sola.</p>`;
@@ -934,7 +984,7 @@ function tabJugadores(data) {
       <div class="row">${sucio ? '<span class="small" style="color:var(--accent-ink);font-weight:600">Cambios sin guardar</span>' : ''}<button class="btn primary" type="button" data-act="guardarPlantel" ${sucio ? '' : 'disabled'}>Guardar plantel</button></div></div>
     ${conStats ? '<p class="small" style="margin:0;padding:12px 14px;border:1px solid var(--accent);color:var(--accent-ink)">Ya hay partidos jugados: si cambiás el número de alguien, las jugadas viejas quedan con el número anterior.</p>' : ''}
     <div class="row" style="align-items:flex-end">
-      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarJ"><option value="">Elegí un jugador</option>${disp.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`).join('')}</select></label>
+      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarJ"><option value="">${disp.length ? 'Elegí un jugador' : 'No hay más jugadores ' + (genero === 'f' ? 'femeninos' : 'masculinos') + ' en la biblioteca'}</option>${disp.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`).join('')}</select></label>
       <button class="btn light" type="button" data-act="agregarJ">Agregar</button>
     </div>
     ${T.plantel.length ? `<div class="table-wrap"><table class="t" style="min-width:560px"><thead><tr><th>Jugador</th><th>N.º en este torneo</th><th>Posición</th><th><span class="sr">Quitar</span></th></tr></thead><tbody>
@@ -947,7 +997,13 @@ function tabJugadores(data) {
 }
 
 function tabEquipos(data) {
-  if (!T.equipos) T.equipos = data.equipos.map(e => Object.assign({}, e));
+  if (!T.equipos) {
+    T.equipos = fenixPrimero(data.equipos.map(e => Object.assign({}, e)), 'equipo');
+    if (!T.equipos.some(e => esFenix(e.equipo))) {
+      const f = S.bib && S.bib.equipos.find(x => esFenix(x.nombre));
+      T.equipos.unshift({ equipoId: f ? f.id : '', equipo: 'FENIX', logo: f ? f.logo : '', categoria: '' });
+    }
+  }
   const sucio = JSON.stringify(T.equipos) !== JSON.stringify(data.equipos);
   const g = norm(data.torneo.genero);
   const en = new Set(T.equipos.map(e => norm(e.equipo)));
@@ -959,7 +1015,7 @@ function tabEquipos(data) {
       <span class="small muted">Los logos se cargan y encuadran en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span></div>
       <div class="row">${sucio ? '<span class="small" style="color:var(--accent-ink);font-weight:600">Cambios sin guardar</span>' : ''}<button class="btn primary" type="button" data-act="guardarEquipos" ${sucio ? '' : 'disabled'}>Guardar equipos</button></div></div>
     <div class="row" style="align-items:flex-end">
-      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarE"><option value="">Elegí un equipo</option>${disp.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)}</option>`).join('')}</select></label>
+      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarE"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${disp.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)}</option>`).join('')}</select></label>
       <button class="btn light" type="button" data-act="agregarE">Agregar</button>
     </div>
     ${T.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
@@ -967,7 +1023,7 @@ function tabEquipos(data) {
         <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 48, { logo: true })}
         <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
         ${copa ? `<label class="sr" for="ec${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="ec${i}" data-ec="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}
-        <button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button></li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
+        ${esFenix(e.equipo) ? '<span class="small" style="color:var(--accent-ink);font-weight:700;padding:0 12px">Tu equipo</span>' : `<button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
   </div>`;
 }
 
