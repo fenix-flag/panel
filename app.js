@@ -114,6 +114,8 @@ function loadCfg() {
 }
 function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) { /* sin storage */ } }
 
+// Versión de Code.gs con la que se probó este panel.
+const VERSION_ESPERADA = '2026-10-21b';
 const S = { cfg: loadCfg(), estado: null, torneos: null, bib: null, torneo: {} };
 const needsCfg = () => !S.cfg.apiUrl || !S.cfg.key;
 
@@ -132,7 +134,11 @@ async function api(op, payload) {
   if (!res.ok) throw new Error('La API respondió con error ' + res.status + '.');
   let j;
   try { j = await res.json(); } catch (e) { throw new Error('La API no devolvió datos válidos. ¿La URL termina en /exec?'); }
-  if (!j.ok) throw new Error(j.error === 'no autorizado' ? 'Clave incorrecta: la API respondió "no autorizado".' : (j.error || 'Error desconocido'));
+  if (!j.ok) {
+    if (j.error === 'no autorizado') throw new Error('Clave incorrecta: la API respondió "no autorizado".');
+    if (/^operacion desconocida/.test(j.error || '')) throw new Error('La implementación de Apps Script tiene una versión vieja del código (' + j.error + '). Publicá el Code.gs nuevo como "Nueva versión" en la misma implementación cuya URL está en Configuración.');
+    throw new Error(j.error || 'Error desconocido');
+  }
   return j;
 }
 async function getTorneos(force) { if (!S.torneos || force) S.torneos = (await api('torneos')).torneos; return S.torneos; }
@@ -1209,13 +1215,13 @@ async function pageConfig() {
     const carpetas = e ? Object.keys(e.carpetas) : [];
     const todoOk = e && e.indice && e.biblioteca.jugadores && e.biblioteca.equipos && carpetas.every(k => e.carpetas[k]) && e.plantilla;
     view.innerHTML = `
-      ${pageHead('Conexiones y reglas', 'Configuración', e ? `<span class="badge ${todoOk ? 'ok' : 'warn'}">${todoOk ? '● TODO CONECTADO' : '◐ CONFIGURACIÓN PENDIENTE'}</span>` : '')}
+      ${pageHead('Conexiones y reglas', 'Configuración', e ? `<span class="badge off">SCRIPT ${esc(e.version || 'VIEJO')}</span><span class="badge ${todoOk && e.version === VERSION_ESPERADA ? 'ok' : 'warn'}">${todoOk && e.version === VERSION_ESPERADA ? '● TODO CONECTADO' : (e.version !== VERSION_ESPERADA ? '◐ ACTUALIZÁ EL SCRIPT' : '◐ CONFIGURACIÓN PENDIENTE')}</span>` : '')}
       <section class="card pad-lg" aria-labelledby="c1">
         <div class="stack" style="gap:4px"><span class="kicker" style="color:var(--accent)">01</span><h2 class="h2" id="c1">Conexión con Apps Script</h2>
           <span class="muted">Se guarda solo en este navegador. La clave es la ADMIN_KEY de las propiedades del script.</span></div>
-        <div class="grid-form" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+        <div class="grid-form" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start">
           <label class="field" style="grid-column:1/-1">URL de la API<input class="input mono" id="apiUrl" type="url" value="${esc(c.apiUrl)}" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"><span class="hint">La URL de la implementación como aplicación web; termina en /exec.</span></label>
-          <label class="field">Clave de administrador<input class="input mono" id="apiKey" type="password" value="${esc(c.key)}" autocomplete="off"></label>
+          <label class="field">Clave de administrador<input class="input mono" id="apiKey" type="password" value="${esc(c.key)}" autocomplete="off"><span class="hint">La ADMIN_KEY del script.</span></label>
           <label class="field"><span>Link del anotador <span class="opt">(opcional)</span></span><input class="input mono" id="anotUrl" type="url" value="${esc(c.anotadorUrl)}" placeholder="https://…/anotador.html?planilla={planilla}&partido={partido}" spellcheck="false"><span class="hint">Podés usar {planilla}, {partido} y {genero}.</span></label>
         </div>
         <div class="row"><button class="btn primary" type="button" data-act="guardarCfg">Guardar y probar</button></div>

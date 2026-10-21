@@ -214,3 +214,8 @@ table.t tr.click:hover { background: #1A1B20; }
 .ph.logo, .prev.logo { background: transparent; }
 .frame.logo { background: var(--bg); }
 .lib-card .ph.logo { background: var(--bg); }
+
+/* ---------- Barra lateral fija (el engranaje siempre visible) ---------- */
+@media (min-width: 721px) {
+  .rail { position: sticky; top: 0; height: 100vh; align-self: flex-start; }
+}
