@@ -26,6 +26,7 @@ const ICON = {
   check: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
   img: '<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>',
   search: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  trash: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   ext: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>'
 };
 
@@ -44,6 +45,23 @@ async function conBoton(btn, textoOcupado, fn) {
   try { return await fn(); }
   catch (e) { toast(e.message || String(e), 'err'); return undefined; }
   finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = txt; } }
+}
+
+// Cartel de confirmación propio (no usa confirm() del navegador).
+function confirmar(titulo, texto, boton) {
+  return new Promise(res => {
+    const d = document.createElement('dialog');
+    d.className = 'modal';
+    d.setAttribute('aria-labelledby', 'mTit');
+    d.innerHTML = `<form method="dialog" class="stack" style="gap:16px">
+      <h2 class="h2" id="mTit" style="font-size:30px">${esc(titulo)}</h2>
+      <p class="muted" style="margin:0">${esc(texto)}</p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="no">Cancelar</button><button class="btn danger-fill" value="si">${esc(boton || 'Eliminar')}</button></div></form>`;
+    document.body.appendChild(d);
+    d.addEventListener('close', () => { res(d.returnValue === 'si'); d.remove(); });
+    d.showModal();
+    d.querySelector('[value="no"]').focus();
+  });
 }
 
 function avatar(url, nombre, size, opts) {
@@ -180,14 +198,27 @@ function pendientes(bib) {
 function tablaTorneos(lista) {
   if (!lista.length) return '<p class="empty">Todavía no hay torneos.</p>';
   return `<div class="table-wrap"><table class="t" style="min-width:640px">
-    <thead><tr><th>Torneo</th><th>Género</th><th>Tipo</th><th>Estado</th></tr></thead><tbody>
+    <thead><tr><th>Torneo</th><th>Género</th><th>Tipo</th><th>Estado</th><th><span class="sr">Eliminar</span></th></tr></thead><tbody>
     ${lista.map(t => `<tr class="click" data-act="abrirTorneo" data-id="${esc(t.id)}">
       <td><a href="#/torneo/${encodeURIComponent(t.id)}" style="color:var(--ink);font-weight:600;text-decoration:none">${esc(t.temporada || '(sin nombre)')}</a></td>
       <td>${esc(t.genero)}</td><td class="muted">${esc(t.tipo || '—')}</td>
-      <td>${t.activa ? '<span class="badge ok">● ACTIVO</span>' : '<span class="badge off">○ INACTIVO</span>'}</td></tr>`).join('')}
+      <td>${t.activa ? '<span class="badge ok">● ACTIVO</span>' : '<span class="badge off">○ INACTIVO</span>'}</td>
+      <td class="r"><button class="btn icon" type="button" data-act="eliminarTorneo" data-id="${esc(t.id)}" data-nombre="${esc(t.temporada + ' · ' + t.genero)}" aria-label="Eliminar torneo ${esc(t.temporada)} ${esc(t.genero)}" title="Eliminar torneo">${ICON.trash}</button></td></tr>`).join('')}
     </tbody></table></div>`;
 }
-const accionesTablaTorneos = { abrirTorneo: el => { location.hash = '#/torneo/' + encodeURIComponent(el.dataset.id); } };
+const accionesTablaTorneos = {
+  abrirTorneo: el => { location.hash = '#/torneo/' + encodeURIComponent(el.dataset.id); },
+  eliminarTorneo: async el => {
+    const ok = await confirmar('¿Eliminar el torneo?', `¿Estás seguro de que querés eliminar "${el.dataset.nombre}"? Se saca del índice (deja de aparecer en la app y en el anotador) y la planilla va a la papelera de Drive, donde se puede recuperar durante 30 días.`, 'Eliminar torneo');
+    if (!ok) return;
+    await conBoton(el, '…', async () => {
+      const r = await api('eliminarTorneo', { id: el.dataset.id });
+      S.torneos = null; delete S.torneo[el.dataset.id];
+      toast(r.papelera ? 'Torneo eliminado. La planilla quedó en la papelera de Drive.' : 'Torneo sacado del índice. La planilla no se borró porque es una de las principales.', 'ok', 6000);
+      router();
+    });
+  }
+};
 
 async function pageInicio() {
   if (needsCfg()) { view.innerHTML = pageHead('FENIX // Panel Central', 'Centro de mando') + cfgCard(); return; }
@@ -388,7 +419,25 @@ async function pageBiblioteca(tab) {
       const n = document.querySelector('[data-f="nombre"]'); if (n) n.focus();
     },
     centrar: () => { B.draft.encuadre = { x: 0, y: 0, z: 1 }; B.draft.encCambio = B.draft.dirty = true; aplicarEncuadre(); const z = document.getElementById('zoom'); if (z) z.value = 1; },
-    guardar: el => guardarDraft(el)
+    guardar: el => guardarDraft(el),
+    eliminar: async el => {
+      const d = B.draft;
+      const jug = d._tipo === 'jugadores';
+      const ok = await confirmar(jug ? '¿Eliminar jugador?' : '¿Eliminar equipo?',
+        `¿Estás seguro de que querés eliminar a "${d.nombre}" de la biblioteca? Los torneos donde ya ${jug ? 'está convocado' : 'participa'} no cambian. Si solo dejó de jugar, podés desmarcar "Activo" en lugar de eliminarlo.`.replace(jug ? '' : ' Si solo dejó de jugar, podés desmarcar "Activo" en lugar de eliminarlo.', ''), 'Eliminar');
+      if (!ok) return;
+      await conBoton(el, 'Eliminando…', async () => {
+        await api(jug ? 'eliminarJugador' : 'eliminarEquipo', { id: d.id });
+        const lista = jug ? S.bib.jugadores : S.bib.equipos;
+        const i = lista.findIndex(x => x.id === d.id);
+        if (i >= 0) lista.splice(i, 1);
+        const sig = ordenarBib(lista.filter(visibleBib))[0];
+        B.draft = sig ? draftDe(sig, B.tab) : null;
+        S.torneo = {};
+        renderGridBib(); renderEditor();
+        toast(`${d.nombre} eliminado de la biblioteca`, 'ok');
+      });
+    }
   });
 }
 
@@ -488,7 +537,7 @@ function renderEditor() {
     </div>`}
     <div class="row between" style="border-top:1px solid var(--line);padding-top:14px">
       <span class="small" id="edMsg" style="color:var(--accent-ink);font-weight:600">${d.dirty ? 'Cambios sin guardar' : ''}</span>
-      <button class="btn primary" type="button" data-act="guardar">Guardar</button>
+      <div class="row">${d.id && !(d._tipo === 'equipos' && esFenix(d.nombre)) ? '<button class="btn sm danger" type="button" data-act="eliminar">' + ICON.trash + ' Eliminar</button>' : ''}<button class="btn primary" type="button" data-act="guardar">Guardar</button></div>
     </div>`;
   aplicarEncuadre();
 
