@@ -209,3 +209,8 @@ table.t tr.click:hover { background: #1A1B20; }
 .modal::backdrop { background: rgba(5, 5, 7, .7); }
 .btn.danger-fill { border: 0; background: var(--err); color: #1A0505; font-weight: 700; }
 .btn.danger-fill:hover { background: #FCA5A5; color: #1A0505; }
+
+/* ---------- Logos sin fondo blanco ---------- */
+.ph.logo, .prev.logo { background: transparent; }
+.frame.logo { background: var(--bg); }
+.lib-card .ph.logo { background: var(--bg); }

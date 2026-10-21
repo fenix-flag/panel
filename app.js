@@ -830,7 +830,7 @@ function renderWizard(error) {
           <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 44, { logo: true })}
           <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
           ${cats ? `<label class="sr" for="cat${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="cat${i}" data-cat="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select>` : ''}
-          ${esFenix(e.equipo) ? '<span class="small" style="color:var(--accent-ink);font-weight:700;padding:0 12px">Tu equipo</span>' : `<button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
+          ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
   } else if (W.paso === 3) {
     html = `${cab('Fixture', 'Se carga después, desde la pantalla del torneo, cuando la organización lo publique.')}
       <p style="margin:0;padding:16px;border:1px solid var(--line-2)">Al crear el torneo vas directo a cargar los partidos uno por uno: fecha, día, hora, local, visitante y cancha. Los partidos de FENIX abren el anotador; en los demás cargás el resultado y la tabla se arma sola.</p>`;
@@ -1098,7 +1098,7 @@ function tabEquipos(data) {
         <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 48, { logo: true })}
         <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
         ${copa ? `<label class="sr" for="ec${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="ec${i}" data-ec="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}
-        ${esFenix(e.equipo) ? '<span class="small" style="color:var(--accent-ink);font-weight:700;padding:0 12px">Tu equipo</span>' : `<button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
+        ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
   </div>`;
 }
 
@@ -1267,6 +1267,19 @@ async function pageConfig() {
     })
   });
 }
+
+// Si una foto o logo no carga (link de Drive roto), se muestran las iniciales.
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const ph = img.closest('.ph, .lib-card');
+  if (!ph) return;
+  const ini = document.createElement('span');
+  ini.className = 'ini';
+  const nombre = (img.closest('.lib-card') && img.closest('.lib-card').querySelector('.name')) || (ph.parentElement && ph.parentElement.querySelector('.team'));
+  ini.textContent = nombre ? iniciales(nombre.textContent) : '';
+  img.replaceWith(ini);
+}, true);
 
 /* ===================================================================== */
 router();
