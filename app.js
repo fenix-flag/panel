@@ -47,6 +47,32 @@ async function conBoton(btn, textoOcupado, fn) {
   finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = txt; } }
 }
 
+// Cartel para editar nombre y estado de un torneo. Devuelve {temporada, activa} o null.
+function dialogoEditarTorneo(t) {
+  return new Promise(res => {
+    const d = document.createElement('dialog');
+    d.className = 'modal';
+    d.setAttribute('aria-labelledby', 'eTit');
+    d.innerHTML = `<form method="dialog" class="stack" style="gap:16px">
+      <h2 class="h2" id="eTit" style="font-size:30px">Editar torneo</h2>
+      <label class="field">Nombre del torneo<input class="input" id="eNom" value="${esc(t.temporada)}" required></label>
+      <label class="check"><input type="checkbox" id="eAct" ${t.activa ? 'checked' : ''}> Activo: aparece en la app de stats y en el anotador</label>
+      <p class="alert small" id="eErr" role="alert"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="no" formnovalidate>Cancelar</button><button class="btn primary" value="si">Guardar</button></div></form>`;
+    document.body.appendChild(d);
+    d.querySelector('form').addEventListener('submit', e => {
+      if (e.submitter && e.submitter.value === 'si' && !d.querySelector('#eNom').value.trim()) { e.preventDefault(); d.querySelector('#eErr').textContent = 'Poné un nombre.'; }
+    });
+    d.addEventListener('close', () => {
+      const ok = d.returnValue === 'si';
+      const v = { temporada: d.querySelector('#eNom').value.trim(), activa: d.querySelector('#eAct').checked };
+      d.remove(); res(ok ? v : null);
+    });
+    d.showModal();
+    const i = d.querySelector('#eNom'); i.focus(); i.select();
+  });
+}
+
 // Cartel de confirmación propio (no usa confirm() del navegador).
 function confirmar(titulo, texto, boton) {
   return new Promise(res => {
@@ -884,7 +910,7 @@ function renderTorneo() {
         ${t.desde || t.hasta ? `<span class="chip" style="font:500 14px var(--body);text-transform:none;color:var(--muted)">${esc([t.desde, t.hasta].filter(Boolean).join(' → '))}</span>` : ''}
         ${faltaFixture ? '<span class="badge warn">◐ FALTA FIXTURE</span>' : (t.activa ? '<span class="badge ok">● ACTIVO</span>' : '<span class="badge off">○ INACTIVO</span>')}
       </div></div>
-      <div class="row"><button class="btn" type="button" data-act="recargar">Actualizar</button><a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener">${ICON.ext} Abrir planilla</a></div>
+      <div class="row"><button class="btn" type="button" data-act="editarTorneo">Editar</button><button class="btn" type="button" data-act="recargar">Actualizar</button><a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener">${ICON.ext} Abrir planilla</a></div>
     </header>
     <section class="tiles" aria-label="Configuración del torneo">
       ${tile('Jugadores', pad2(data.plantel.length))}${tile('Equipos', pad2(data.equipos.length))}
@@ -1107,6 +1133,12 @@ function bindTorneo() {
   };
   bind({
     recargar: el => conBoton(el, 'Actualizando…', async () => { await getTorneo(T.id, true); T.plantel = T.equipos = null; rerender(); }),
+    editarTorneo: async el => {
+      const t = data().torneo;
+      const v = await dialogoEditarTorneo(t);
+      if (!v || (v.temporada === t.temporada && v.activa === t.activa)) return;
+      guardarYRefrescar(el, 'Guardando…', 'editarTorneo', v, () => { S.torneos = null; toast('Torneo actualizado', 'ok'); });
+    },
     copiar: el => { navigator.clipboard.writeText(el.dataset.url).then(() => toast('Link copiado', 'ok'), () => toast('No se pudo copiar', 'err')); },
     agregarPartido: el => {
       const f = T.form;
