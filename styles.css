@@ -203,3 +203,9 @@ table.t tr.click:hover { background: #1A1B20; }
 .spin { width: 20px; height: 20px; border: 3px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .busy { pointer-events: none; opacity: .6; }
+
+/* ---------- Confirmación ---------- */
+.modal { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); padding: 28px; width: calc(100% - 32px); max-width: 480px; }
+.modal::backdrop { background: rgba(5, 5, 7, .7); }
+.btn.danger-fill { border: 0; background: var(--err); color: #1A0505; font-weight: 700; }
+.btn.danger-fill:hover { background: #FCA5A5; color: #1A0505; }
