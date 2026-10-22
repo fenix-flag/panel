@@ -33,9 +33,19 @@ const ICON = {
 function toast(msg, tipo, ms) {
   const el = document.createElement('div');
   el.className = 'toast' + (tipo ? ' ' + tipo : '');
-  el.textContent = msg;
+  const txt = document.createElement('span');
+  txt.textContent = msg;
+  el.appendChild(txt);
+  if (tipo === 'err' || tipo === 'warn') {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'toast-x'; x.setAttribute('aria-label', 'Cerrar'); x.textContent = '×';
+    x.onclick = () => el.remove();
+    el.appendChild(x);
+    el.setAttribute('role', 'alert');
+  } else {
+    setTimeout(() => el.remove(), ms || 3500);
+  }
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), ms || (tipo === 'err' ? 6000 : 3500));
 }
 
 // Deshabilita el botón mientras corre fn, y muestra el error si falla.
@@ -115,7 +125,7 @@ function loadCfg() {
 function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) { /* sin storage */ } }
 
 // Versión de Code.gs con la que se probó este panel.
-const VERSION_ESPERADA = '2026-10-21b';
+const VERSION_ESPERADA = '2026-10-22a';
 const S = { cfg: loadCfg(), estado: null, torneos: null, bib: null, torneo: {} };
 const needsCfg = () => !S.cfg.apiUrl || !S.cfg.key;
 
@@ -872,6 +882,7 @@ async function crearTorneoWizard(btn) {
       jugadores: jugadores, equipos: W.equipos
     });
     toast(`Torneo creado: ${r.torneo.nombre}`, 'ok');
+    (r.avisos || []).forEach(a => toast(a + ' Podés cargarlo desde las pestañas Jugadores y Equipos del torneo.', 'warn'));
     W = null; S.torneos = null;
     location.hash = '#/torneo/' + encodeURIComponent(r.torneo.id) + '/fixture';
   });

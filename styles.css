@@ -241,3 +241,9 @@ table.t tr.click:hover { background: #1A1B20; }
   .eq-row .team { font-size: 18px; }
   .eq-row > .mono { display: none; }
 }
+
+/* ---------- Avisos que quedan hasta cerrarlos ---------- */
+.toast { display: flex; align-items: flex-start; gap: 12px; }
+.toast > span { flex: 1; }
+.toast.warn { background: var(--accent); color: var(--bg); }
+.toast-x { border: 0; background: transparent; color: inherit; font-size: 22px; line-height: 1; width: 32px; height: 32px; margin: -6px -8px -6px 0; flex: none; }
