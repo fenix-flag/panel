@@ -791,7 +791,7 @@ function renderWizard(error) {
         ${TIPOS.map(t => `<button type="button" class="choice" data-act="tipo" data-t="${t.id}" aria-pressed="${W.tipo === t.id}"><b>${t.id}</b><span>${t.d}</span></button>`).join('')}
       </div>
       <div class="grid-form">
-        <label class="field" style="grid-column:span 2">Nombre del torneo<input class="input" data-w="temporada" value="${esc(W.temporada)}" placeholder="Ej: Apertura 2026"><span class="hint">La planilla se llama "${W.genero} - ${esc(W.temporada || 'Nombre')}".</span></label>
+        <label class="field" style="grid-column:1/-1"><span>Nombre del torneo <span class="opt">· la planilla se va a llamar "${W.genero} - Nombre"</span></span><input class="input" data-w="temporada" value="${esc(W.temporada)}" placeholder="Ej: Apertura 2026"></label>
         ${W.tipo === 'Copa' ? `<label class="field">Cantidad de grupos<input class="input" type="number" min="2" max="8" data-w="grupos" value="${esc(W.grupos)}"></label>` : ''}
         <label class="field"><span>Desde <span class="opt">(opcional)</span></span><input class="input" type="date" data-w="desde" value="${esc(W.desde)}"></label>
         <label class="field"><span>Hasta <span class="opt">(opcional)</span></span><input class="input" type="date" data-w="hasta" value="${esc(W.hasta)}"></label>
@@ -828,13 +828,14 @@ function renderWizard(error) {
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:1 1 260px">Agregar equipo de la biblioteca
           <select class="select" id="agregarEq"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${disp.map(e => `<option value="${esc(e.id)}" ${W.agregar === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select>
-          <span class="hint">¿No está? Crealo en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span></label>
-        <button type="button" class="btn light" data-act="agregarEq" style="margin-bottom:22px">Agregar</button>
+</label>
+        <button type="button" class="btn light" data-act="agregarEq">Agregar</button>
       </div>
+      <span class="small muted" style="margin-top:-8px">¿No está? Crealo en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span>
       ${W.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
-        ${W.equipos.map((e, i) => `<li class="row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'};padding:8px 8px 8px 16px;gap:14px">
+        ${W.equipos.map((e, i) => `<li class="row eq-row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'}">
           <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 44, { logo: true })}
-          <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
+          <span class="team">${esc(e.equipo)}</span>
           ${cats ? `<label class="sr" for="cat${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="cat${i}" data-cat="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select>` : ''}
           ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
   } else if (W.paso === 3) {
@@ -983,7 +984,7 @@ function tabFixture(data) {
     <section class="card pad-lg" aria-labelledby="fxT">
       <div class="stack" style="gap:4px"><h2 class="h2" id="fxT">Agregar partido</h2><span class="muted">Podés cargar partidos de todos los equipos del torneo, no solo los de FENIX.</span></div>
       <div class="grid-form">
-        <label class="field">Fecha <span class="hint">Jornada o instancia</span><input class="input" data-fx="jornada" list="jornadas" value="${esc(f.jornada)}" placeholder="Fecha 1"></label>
+        <label class="field"><span>Fecha <span class="opt">(jornada)</span></span><input class="input" data-fx="jornada" list="jornadas" value="${esc(f.jornada)}" placeholder="Fecha 1"></label>
         <label class="field">Día<input class="input" type="date" data-fx="dia" value="${esc(f.dia)}"></label>
         <label class="field"><span>Hora <span class="opt">(opcional)</span></span><input class="input" type="time" data-fx="hora" value="${esc(f.hora)}"></label>
         <label class="field">Local<select class="select" data-fx="local">${opts(f.local)}</select></label>
@@ -1100,9 +1101,9 @@ function tabEquipos(data) {
       <button class="btn light" type="button" data-act="agregarE">Agregar</button>
     </div>
     ${T.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
-      ${T.equipos.map((e, i) => `<li class="row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'};padding:8px 8px 8px 16px;gap:14px">
+      ${T.equipos.map((e, i) => `<li class="row eq-row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'}">
         <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 48, { logo: true })}
-        <span class="team" style="flex:1;font-size:22px">${esc(e.equipo)}</span>
+        <span class="team">${esc(e.equipo)}</span>
         ${copa ? `<label class="sr" for="ec${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="ec${i}" data-ec="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}
         ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
   </div>`;
@@ -1219,7 +1220,7 @@ async function pageConfig() {
       <section class="card pad-lg" aria-labelledby="c1">
         <div class="stack" style="gap:4px"><span class="kicker" style="color:var(--accent)">01</span><h2 class="h2" id="c1">Conexión con Apps Script</h2>
           <span class="muted">Se guarda solo en este navegador. La clave es la ADMIN_KEY de las propiedades del script.</span></div>
-        <div class="grid-form" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start">
+        <div class="grid-form cfg-grid">
           <label class="field" style="grid-column:1/-1">URL de la API<input class="input mono" id="apiUrl" type="url" value="${esc(c.apiUrl)}" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false"><span class="hint">La URL de la implementación como aplicación web; termina en /exec.</span></label>
           <label class="field">Clave de administrador<input class="input mono" id="apiKey" type="password" value="${esc(c.key)}" autocomplete="off"><span class="hint">La ADMIN_KEY del script.</span></label>
           <label class="field"><span>Link del anotador <span class="opt">(opcional)</span></span><input class="input mono" id="anotUrl" type="url" value="${esc(c.anotadorUrl)}" placeholder="https://…/anotador.html?planilla={planilla}&partido={partido}" spellcheck="false"><span class="hint">Podés usar {planilla}, {partido} y {genero}.</span></label>

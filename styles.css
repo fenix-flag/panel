@@ -219,3 +219,25 @@ table.t tr.click:hover { background: #1A1B20; }
 @media (min-width: 721px) {
   .rail { position: sticky; top: 0; height: 100vh; align-self: flex-start; }
 }
+
+/* ---------- Alineación de formularios ----------
+   Los campos se alinean por arriba: el título de cada campo ocupa una sola línea
+   y las aclaraciones van al lado del título o debajo del campo, sin correr el resto. */
+.grid-form { align-items: start; }
+.field > span:first-child, .field { line-height: 1.35; }
+.field > .input, .field > .select { margin-top: 0; }
+.row > .field + .btn { align-self: flex-end; }
+
+/* ---------- Ajustes de alineación (revisión general) ---------- */
+.grid-form { grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }
+.cfg-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+@media (max-width: 720px) { .cfg-grid { grid-template-columns: 1fr; } }
+.eq-row { flex-wrap: nowrap; gap: 14px; padding: 8px 8px 8px 16px; min-height: 64px; }
+.eq-row .team { flex: 1; min-width: 0; font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eq-row .select { width: auto; flex: none; min-height: 44px; }
+.ph.logo:has(.ini) { background: var(--panel-2); border-radius: 4px; }
+@media (max-width: 720px) {
+  .eq-row { gap: 10px; padding-left: 12px; }
+  .eq-row .team { font-size: 18px; }
+  .eq-row > .mono { display: none; }
+}
