@@ -891,7 +891,23 @@ async function crearTorneoWizard(btn) {
 /* =====================================================================
  *  TORNEO
  * ===================================================================== */
-const T = { id: null, tab: 'resumen', form: null, editRes: null, borrar: null, plantel: null, equipos: null, agregarJ: '', agregarE: '' };
+const T = { id: null, tab: 'resumen', form: null, editRes: null, borrar: null, plantel: null, equipos: null, agregarJ: '', agregarE: '', ordenJ: 'numero', ascJ: true };
+// Orden del plantel (mismo criterio que la Biblioteca): número, nombre o posición; vacíos al final.
+function ordenarPlantel(lista, campo, asc) {
+  const dir = asc ? 1 : -1;
+  const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'es', { sensitivity: 'base' });
+  const vacio = v => v === '' || v == null;
+  return lista.slice().sort((x, y) => {
+    const a = x.p, b = y.p;
+    if (campo === 'numero') {
+      const na = parseInt(a.numero, 10), nb = parseInt(b.numero, 10);
+      if (isNaN(na) !== isNaN(nb)) return isNaN(na) ? 1 : -1;
+      return ((na - nb) || cmp(a.nombre, b.nombre)) * dir;
+    }
+    if (vacio(a[campo]) !== vacio(b[campo])) return vacio(a[campo]) ? 1 : -1;
+    return (cmp(a[campo], b[campo]) || cmp(a.nombre, b.nombre)) * dir;
+  });
+}
 const TABS_T = [['resumen', 'Resumen'], ['fixture', 'Fixture'], ['posiciones', 'Posiciones'], ['jugadores', 'Jugadores'], ['equipos', 'Equipos']];
 const JORNADAS = ['Fecha 1', 'Fecha 2', 'Fecha 3', 'Fecha 4', 'Fecha 5', 'Fecha 6', 'Fecha 7', 'Fecha 8', 'Fecha 9', 'Fecha 10', 'Cuartos de final', 'Semifinal', 'Tercer puesto', 'Final'];
 
@@ -1080,8 +1096,13 @@ function tabJugadores(data) {
       <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarJ"><option value="">${disp.length ? 'Elegí un jugador' : 'No hay más jugadores ' + (genero === 'f' ? 'femeninos' : 'masculinos') + ' en la biblioteca'}</option>${disp.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`).join('')}</select></label>
       <button class="btn light" type="button" data-act="agregarJ">Agregar</button>
     </div>
-    ${T.plantel.length ? `<div class="table-wrap"><table class="t" style="min-width:560px"><thead><tr><th>Jugador</th><th>N.º en este torneo</th><th>Posición</th><th><span class="sr">Quitar</span></th></tr></thead><tbody>
-      ${T.plantel.map((p, i) => `<tr><td><span class="row" style="gap:12px;flex-wrap:nowrap">${avatar(p.foto, p.nombre, 40, { round: true })}<span style="font-weight:600">${esc(p.nombre)}</span></span></td>
+    ${T.plantel.length ? `<div class="row" style="justify-content:flex-end;gap:8px">
+      <label class="sr" for="ordenJ">Ordenar por</label>
+      <select class="select" id="ordenJ" style="width:auto;min-height:44px">${[['numero', 'número'], ['nombre', 'nombre'], ['posicion', 'posición']].map(([k, l]) => `<option value="${k}" ${T.ordenJ === k ? 'selected' : ''}>Ordenar por ${l}</option>`).join('')}</select>
+      <button type="button" class="btn sm" data-act="dirJ" style="min-width:96px" aria-label="${T.ascJ ? 'Orden ascendente; tocá para descendente' : 'Orden descendente; tocá para ascendente'}">${T.ascJ ? '↑ Asc' : '↓ Desc'}</button>
+    </div>
+    <div class="table-wrap"><table class="t" style="min-width:560px"><thead><tr><th>Jugador</th><th>N.º en este torneo</th><th>Posición</th><th><span class="sr">Quitar</span></th></tr></thead><tbody>
+      ${ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), T.ordenJ, T.ascJ).map(({ p, i }) => `<tr><td><span class="row" style="gap:12px;flex-wrap:nowrap">${avatar(p.foto, p.nombre, 40, { round: true })}<span style="font-weight:600">${esc(p.nombre)}</span></span></td>
         <td><input class="input num${cont[p.numero] > 1 ? ' dup' : ''}" data-pn="${i}" inputmode="numeric" value="${esc(p.numero)}" aria-label="Número de ${esc(p.nombre)}"></td>
         <td class="muted">${esc(p.posicion || '—')}</td>
         <td class="r"><button class="btn icon" type="button" data-act="quitarJ" data-i="${i}" aria-label="Quitar a ${esc(p.nombre)}">${ICON.x}</button></td></tr>`).join('')}
@@ -1144,6 +1165,7 @@ function bindTorneo() {
     if (k) T.form[k] = e.target.value;
     if (e.target.dataset.pn !== undefined) rerender();
     if (e.target.dataset.ec !== undefined) { T.equipos[Number(e.target.dataset.ec)].categoria = e.target.value; rerender(); }
+    if (e.target.id === 'ordenJ') { T.ordenJ = e.target.value; T.ascJ = true; rerender(); }
   };
   view.onkeydown = e => {
     if (e.key === 'Enter' && (e.target.id === 'rl' || e.target.id === 'rv')) { const b = view.querySelector('[data-act="guardarRes"]'); if (b) b.click(); }
@@ -1191,13 +1213,14 @@ function bindTorneo() {
       rerender();
     },
     quitarJ: el => { T.plantel.splice(Number(el.dataset.i), 1); rerender(); },
+    dirJ: () => { T.ascJ = !T.ascJ; rerender(); },
     guardarPlantel: el => {
       const cont = {};
       T.plantel.forEach(p => { if (p.numero) cont[p.numero] = (cont[p.numero] || 0) + 1; });
       const rep = Object.keys(cont).filter(k => cont[k] > 1);
       if (rep.length) { toast('Hay números repetidos: #' + rep.join(', #'), 'err'); return; }
       if (T.plantel.some(p => !p.numero)) { toast('Todos los jugadores necesitan número.', 'err'); return; }
-      guardarYRefrescar(el, 'Guardando…', 'guardarPlantel', { jugadores: T.plantel.map(p => ({ id: p.jugadorId, numero: p.numero, nombre: p.nombre, posicion: p.posicion, foto: p.foto })) },
+      guardarYRefrescar(el, 'Guardando…', 'guardarPlantel', { jugadores: ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), 'numero', true).map(({ p }) => ({ id: p.jugadorId, numero: p.numero, nombre: p.nombre, posicion: p.posicion, foto: p.foto })) },
         () => { T.plantel = null; toast('Plantel guardado', 'ok'); });
     },
     agregarE: () => {
