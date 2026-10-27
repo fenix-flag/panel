@@ -950,19 +950,22 @@ function ordenarPlantel(lista, campo, asc) {
 const TABS_T = [['resumen', 'Resumen'], ['fixture', 'Fixture'], ['posiciones', 'Posiciones'], ['jugadores', 'Jugadores'], ['equipos', 'Equipos']];
 const PLAYOFF_RONDAS = ['Octavos de final', 'Cuartos de final', 'Semifinal', '3er y 4to puesto', 'Final'];
 const esRondaPlayoff = j => /octavo|cuarto|semi|final|3er|tercer|playoff/i.test(j || '');
-// Opciones de "Fecha (jornada)" según el torneo: grupos (Copa), fechas numeradas, rondas de playoff
-// y cualquier valor que ya se haya usado en el fixture (ej: "Semis", "3er y 4to").
-function opcionesJornada(data) {
-  const tipo = data.torneo.tipo;
-  const usadas = [...new Set(data.fixture.map(p => (p.jornada || '').trim()).filter(Boolean))];
-  const grupos = tipo === 'Copa' ? [...new Set(data.equipos.map(e => (e.categoria || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')) : [];
-  const nFechas = Math.max(7, ...usadas.map(u => { const m = /^fecha\s+(\d+)$/i.exec(u); return m ? Number(m[1]) + 1 : 0; }));
-  const fechas = Array.from({ length: nFechas }, (_, i) => 'Fecha ' + (i + 1));
-  const base = [['Grupos', grupos], ['Fechas', fechas], ['Playoffs', PLAYOFF_RONDAS]].filter(g => g[1].length);
-  const todas = base.flatMap(g => g[1]).map(x => x.toLowerCase());
-  const extra = usadas.filter(u => !todas.includes(u.toLowerCase()));
-  if (extra.length) base.unshift(['Ya usadas en este torneo', extra]);
-  return base;
+// "Fecha (jornada)" en dos partes: tipo (Fecha / Grupo / Playoff / Otra) + valor.
+const gruposDe = data => data.torneo.tipo === 'Copa' ? [...new Set(data.equipos.map(e => (e.categoria || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')) : [];
+const proximaFecha = data => 1 + Math.max(0, ...data.fixture.map(p => { const m = /^fecha\s+(\d+)$/i.exec((p.jornada || '').trim()); return m ? Number(m[1]) : 0; }));
+function partesJornada(j, data) {
+  const v = (j || '').trim();
+  const m = /^fecha\s+(\d+)$/i.exec(v);
+  if (m) return { tipo: 'fecha', n: Number(m[1]) };
+  const g = gruposDe(data).find(x => x.toLowerCase() === v.toLowerCase());
+  if (g) return { tipo: 'grupo', g: g };
+  const r = PLAYOFF_RONDAS.find(x => x.toLowerCase() === v.toLowerCase());
+  if (r) return { tipo: 'playoff', r: r };
+  return { tipo: 'otra', txt: v };
+}
+function jornadaInicial(data) {
+  const gs = gruposDe(data);
+  return gs.length ? gs[0] : 'Fecha ' + proximaFecha(data);
 }
 
 function linkAnotador(data, p) {
@@ -979,7 +982,7 @@ async function pageTorneo(id, tab) {
   if (T.id !== id) Object.assign(T, { id: id, form: null, editRes: null, borrar: null, plantel: null, equipos: null });
   T.tab = TABS_T.some(t => t[0] === tab) ? tab : 'resumen';
   const [data] = await Promise.all([getTorneo(id), getBib().catch(() => null)]);
-  if (!T.form) T.form = { jornada: '', dia: '', hora: '', local: '', visitante: '', cancha: '', instancia: 'Regular' }; T.jornadaOtra = false;
+  if (!T.form) { T.form = { jornada: '', dia: '', hora: '', local: '', visitante: '', cancha: '', instancia: 'Regular' }; T.jornadaOtra = false; }
   renderTorneo();
   bindTorneo();
 }
@@ -1040,10 +1043,18 @@ function tabFixture(data) {
   const f = T.form;
   const nombres = data.equipos.map(e => e.equipo);
   const canchas = [...new Set(data.fixture.map(p => p.cancha).filter(Boolean))];
-  const grJ = opcionesJornada(data);
-  const listaJ = grJ.flatMap(g => g[1]);
-  const otraJ = T.jornadaOtra || (f.jornada && !listaJ.includes(f.jornada));
-  const selJ = `<select class="select" data-jsel="1"><option value="">Elegí</option>${grJ.map(([lbl, xs]) => `<optgroup label="${esc(lbl)}">${xs.map(x => `<option ${!otraJ && f.jornada === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</optgroup>`).join('')}<option value="__otra" ${otraJ ? 'selected' : ''}>Otra (escribir)…</option></select>`;
+  if (!f.jornada && !T.jornadaOtra) f.jornada = jornadaInicial(data);
+  const pj = T.jornadaOtra ? { tipo: 'otra', txt: f.jornada } : partesJornada(f.jornada, data);
+  const gruposJ = gruposDe(data);
+  const tiposJ = [['fecha', 'Fecha'], ...(gruposJ.length ? [['grupo', 'Grupo']] : []), ['playoff', 'Playoff'], ['otra', 'Otra']];
+  const valJ = pj.tipo === 'fecha'
+      ? `<div class="jnum"><button class="btn icon" type="button" data-act="jstep" data-d="-1" aria-label="Fecha anterior">–</button><input class="input mono" type="number" inputmode="numeric" min="1" data-jnum="1" value="${pj.n}" aria-label="Número de fecha"><button class="btn icon" type="button" data-act="jstep" data-d="1" aria-label="Fecha siguiente">+</button></div>`
+    : pj.tipo === 'grupo'
+      ? `<select class="select" data-jval="1" aria-label="Grupo">${gruposJ.map(g => `<option ${pj.g === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>`
+    : pj.tipo === 'playoff'
+      ? `<select class="select" data-jval="1" aria-label="Ronda">${PLAYOFF_RONDAS.map(r => `<option ${pj.r === r ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`
+      : `<input class="input" data-fx="jornada" value="${esc(pj.txt || '')}" placeholder="Ej: Repechaje" aria-label="Nombre de la jornada">`;
+  const selJ = `<div class="jfield"><select class="select" data-jtipo="1" aria-label="Tipo de jornada">${tiposJ.map(([k, l]) => `<option value="${k}" ${pj.tipo === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${valJ}</div>`;
   // Si la jornada es un grupo, los equipos de ese grupo aparecen primero.
   const delGrupo = nombres.filter(n => { const e = data.equipos.find(x => x.equipo === n); return e && f.jornada && (e.categoria || '').trim().toLowerCase() === f.jornada.trim().toLowerCase(); });
   const opt1 = (n, sel) => `<option ${sel === n ? 'selected' : ''}>${esc(n)}</option>`;
@@ -1074,7 +1085,7 @@ function tabFixture(data) {
     <section class="card pad-lg" aria-labelledby="fxT">
       <div class="stack" style="gap:4px"><h2 class="h2" id="fxT">Agregar partido</h2><span class="muted">Podés cargar partidos de todos los equipos del torneo, no solo los de FENIX.</span></div>
       <div class="grid-form">
-        <label class="field"><span>Fecha <span class="opt">(jornada o grupo)</span></span>${selJ}${otraJ ? `<input class="input" data-fx="jornada" value="${esc(f.jornada)}" placeholder="Ej: Repechaje" style="margin-top:6px">` : ''}</label>
+        <div class="field field-jornada"><span>Fecha <span class="opt">(jornada)</span></span>${selJ}</div>
         <label class="field">Día<input class="input" type="date" data-fx="dia" value="${esc(f.dia)}"></label>
         <label class="field"><span>Hora <span class="opt">(opcional)</span></span><input class="input" type="time" data-fx="hora" value="${esc(f.hora)}"></label>
         <label class="field">Local<select class="select" data-fx="local">${opts(f.local)}</select></label>
@@ -1214,6 +1225,7 @@ function bindTorneo() {
     return r;
   });
   view.oninput = e => {
+    if (e.target.dataset.jnum) { const n = parseInt(e.target.value, 10); if (n >= 1) T.form.jornada = 'Fecha ' + n; return; }
     const k = e.target.dataset.fx;
     if (k) { T.form[k] = e.target.value; return; }
     const pn = e.target.dataset.pn;
@@ -1223,12 +1235,18 @@ function bindTorneo() {
     }
   };
   view.onchange = e => {
-    if (e.target.dataset.jsel) {
-      const v = e.target.value;
-      if (v === '__otra') { T.jornadaOtra = true; T.form.jornada = ''; }
-      else { T.jornadaOtra = false; T.form.jornada = v; if (v) T.form.instancia = esRondaPlayoff(v) ? 'Playoff' : 'Regular'; }
+    const fijarJ = v => { T.form.jornada = v; T.form.instancia = esRondaPlayoff(v) ? 'Playoff' : 'Regular'; };
+    if (e.target.dataset.jtipo) {
+      const d = data(), t = e.target.value;
+      T.jornadaOtra = t === 'otra';
+      if (t === 'fecha') fijarJ('Fecha ' + proximaFecha(d));
+      else if (t === 'grupo') fijarJ(gruposDe(d)[0] || '');
+      else if (t === 'playoff') fijarJ(PLAYOFF_RONDAS[2]);
+      else { T.form.jornada = ''; T.form.instancia = 'Regular'; }
       rerender(); return;
     }
+    if (e.target.dataset.jval) { fijarJ(e.target.value); rerender(); return; }
+    if (e.target.dataset.jnum) { const n = Math.max(1, parseInt(e.target.value, 10) || 1); fijarJ('Fecha ' + n); rerender(); return; }
     const k = e.target.dataset.fx;
     if (k) T.form[k] = e.target.value;
     if (e.target.dataset.pn !== undefined) rerender();
@@ -1248,6 +1266,11 @@ function bindTorneo() {
       guardarYRefrescar(el, 'Guardando…', 'editarTorneo', v, () => { S.torneos = null; toast('Torneo actualizado', 'ok'); });
     },
     copiar: el => { navigator.clipboard.writeText(el.dataset.url).then(() => toast('Link copiado', 'ok'), () => toast('No se pudo copiar', 'err')); },
+    jstep: el => {
+      const pj = partesJornada(T.form.jornada, data());
+      const n = Math.max(1, (pj.tipo === 'fecha' ? pj.n : 0) + Number(el.dataset.d));
+      T.form.jornada = 'Fecha ' + n; T.form.instancia = 'Regular'; rerender();
+    },
     agregarPartido: el => {
       const f = T.form;
       const err = document.getElementById('fxErr');

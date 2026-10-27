@@ -254,3 +254,12 @@ table.t tr.click:hover { background: #1A1B20; }
 .eq-nom { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .eq-nom .team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eq-row .eq-nom .team { flex: none; }
+
+/* ---- Fecha (jornada): tipo + valor ---- */
+.field-jornada { grid-column: span 2; }
+@media (max-width: 520px) { .field-jornada { grid-column: auto; } }
+.jfield { display: grid; grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1.2fr); gap: 8px; }
+.jnum { display: flex; align-items: stretch; border: 1px solid var(--line-2); border-radius: 4px; background: var(--bg); }
+.jnum .btn.icon { width: 40px; min-height: 42px; font: 700 18px var(--mono); }
+.jnum input { border: 0; background: transparent; text-align: center; min-width: 0; flex: 1; -moz-appearance: textfield; }
+.jnum input::-webkit-outer-spin-button, .jnum input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
