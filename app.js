@@ -125,7 +125,7 @@ function loadCfg() {
 function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) { /* sin storage */ } }
 
 // Versión de Code.gs con la que se probó este panel.
-const VERSION_ESPERADA = '2026-10-27a';
+const VERSION_ESPERADA = '2026-10-28a';
 
 /* ---------- Procedencia de equipos e invitados ---------- */
 const PROCEDENCIAS = ['Buenos Aires', 'Otra provincia', 'Otro país'];
@@ -1289,7 +1289,7 @@ async function pageConfig() {
     const carpetas = e ? Object.keys(e.carpetas) : [];
     const todoOk = e && e.indice && e.biblioteca.jugadores && e.biblioteca.equipos && carpetas.every(k => e.carpetas[k]) && e.plantilla;
     view.innerHTML = `
-      ${pageHead('Conexiones y reglas', 'Configuración', e ? `<span class="badge off">SCRIPT ${esc(e.version || 'VIEJO')}</span><span class="badge ${todoOk && e.version === VERSION_ESPERADA ? 'ok' : 'warn'}">${todoOk && e.version === VERSION_ESPERADA ? '● TODO CONECTADO' : (e.version !== VERSION_ESPERADA ? '◐ ACTUALIZÁ EL SCRIPT' : '◐ CONFIGURACIÓN PENDIENTE')}</span>` : '')}
+      ${pageHead('Conexiones y reglas', 'Configuración', e ? `<span class="badge off">SCRIPT ${esc(e.version || 'VIEJO')}</span><span class="badge ${todoOk && String(e.version || '') >= VERSION_ESPERADA ? 'ok' : 'warn'}">${todoOk && String(e.version || '') >= VERSION_ESPERADA ? '● TODO CONECTADO' : (!(String(e.version || '') >= VERSION_ESPERADA) ? '◐ ACTUALIZÁ EL SCRIPT' : '◐ CONFIGURACIÓN PENDIENTE')}</span>` : '')}
       <section class="card pad-lg" aria-labelledby="c1">
         <div class="stack" style="gap:4px"><span class="kicker" style="color:var(--accent)">01</span><h2 class="h2" id="c1">Conexión con Apps Script</h2>
           <span class="muted">Se guarda solo en este navegador. La clave es la ADMIN_KEY de las propiedades del script.</span></div>
