@@ -247,3 +247,10 @@ table.t tr.click:hover { background: #1A1B20; }
 .toast > span { flex: 1; }
 .toast.warn { background: var(--accent); color: var(--bg); }
 .toast-x { border: 0; background: transparent; color: inherit; font-size: 22px; line-height: 1; width: 32px; height: 32px; margin: -6px -8px -6px 0; flex: none; }
+
+/* ---------- Invitados y procedencia ---------- */
+.tag-inv { display: inline-block; flex: none; margin-left: 8px; padding: 1px 6px; border: 1px solid var(--accent); border-radius: 3px; color: var(--accent-ink); font: 700 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
+.lib-card .tag-inv { margin-left: 0; align-self: flex-start; }
+.eq-nom { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.eq-nom .team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eq-row .eq-nom .team { flex: none; }

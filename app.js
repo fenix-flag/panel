@@ -125,7 +125,36 @@ function loadCfg() {
 function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) { /* sin storage */ } }
 
 // Versión de Code.gs con la que se probó este panel.
-const VERSION_ESPERADA = '2026-10-22a';
+const VERSION_ESPERADA = '2026-10-27a';
+
+/* ---------- Procedencia de equipos e invitados ---------- */
+const PROCEDENCIAS = ['Buenos Aires', 'Otra provincia', 'Otro país'];
+const procKey = p => { const n = norm(p); return n.includes('pais') ? 'Otro país' : n.includes('provincia') ? 'Otra provincia' : 'Buenos Aires'; };
+const esLocal = e => procKey(e && e.procedencia) === 'Buenos Aires';
+// Texto corto de dónde es un equipo: "Mendoza", "Uruguay"… (vacío si es de Buenos Aires).
+const lugarDe = e => (!e || esLocal(e)) ? '' : (e.lugar || procKey(e.procedencia));
+function equipoBib(nombre, id) {
+  if (!S.bib) return null;
+  return S.bib.equipos.find(x => (id && x.id === id) || norm(x.nombre) === norm(nombre)) || null;
+}
+// Opciones del desplegable de equipos, agrupadas: primero Buenos Aires, después el resto.
+function opcionesEquipos(lista, sel) {
+  return PROCEDENCIAS.map(p => {
+    const grupo = lista.filter(e => procKey(e.procedencia) === p).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    if (!grupo.length) return '';
+    return `<optgroup label="${p === 'Buenos Aires' ? 'Buenos Aires' : p === 'Otra provincia' ? 'Otras provincias' : 'Otros países'}">${grupo.map(e =>
+      `<option value="${esc(e.id)}" ${sel === e.id ? 'selected' : ''}>${esc(e.nombre)}${lugarDe(e) ? ' · ' + esc(lugarDe(e)) : ''}</option>`).join('')}</optgroup>`;
+  }).join('');
+}
+// Opciones del desplegable de jugadores: plantel fijo y, aparte, invitados.
+function opcionesJugadores(lista) {
+  const op = j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`;
+  const fijos = lista.filter(j => !j.invitado), inv = lista.filter(j => j.invitado);
+  return (fijos.length ? `<optgroup label="Plantel">${fijos.map(op).join('')}</optgroup>` : '') +
+    (inv.length ? `<optgroup label="Invitados">${inv.map(op).join('')}</optgroup>` : '');
+}
+const tagInvitado = '<span class="tag-inv">Invitado</span>';
+const nombreEquipo = e => `<span class="eq-nom"><span class="team">${esc(e.equipo || e.nombre)}</span>${lugarDe(e) ? `<span class="small muted">${esc(lugarDe(e))}</span>` : ''}</span>`;
 const S = { cfg: loadCfg(), estado: null, torneos: null, bib: null, torneo: {} };
 const needsCfg = () => !S.cfg.apiUrl || !S.cfg.key;
 
@@ -454,8 +483,8 @@ async function pageBiblioteca(tab) {
       if (B.draft && B.draft.dirty && B.pendiente !== '__nuevo') { B.pendiente = '__nuevo'; toast('Hay cambios sin guardar. Tocá de nuevo para descartarlos.'); return; }
       B.pendiente = null;
       const base = jug
-        ? { id: '', nombre: '', numero: '', posicion: '', genero: B.filtro === 'Femenino' ? 'Femenino' : 'Masculino', activo: true }
-        : { id: '', nombre: '', sigla: '', genero: 'Ambos' };
+        ? { id: '', nombre: '', numero: '', posicion: '', genero: B.filtro === 'Femenino' ? 'Femenino' : 'Masculino', activo: true, invitado: B.filtro === 'Invitados' }
+        : { id: '', nombre: '', sigla: '', genero: 'Ambos', procedencia: B.filtro === 'Otras provincias' ? 'Otra provincia' : B.filtro === 'Otros países' ? 'Otro país' : 'Buenos Aires', lugar: '' };
       B.draft = draftDe(base, B.tab); B.draft.dirty = true;
       renderGridBib(); renderEditor();
       const n = document.querySelector('[data-f="nombre"]'); if (n) n.focus();
@@ -489,11 +518,15 @@ function visibleBib(it) {
   if (q && !norm(it.nombre).includes(q) && !norm(it.numero).includes(q) && !norm(it.sigla).includes(q)) return false;
   if (B.filtro === 'Todos') return true;
   if (B.filtro === 'Inactivos') return it.activo === false;
+  if (B.filtro === 'Invitados') return !!it.invitado;
+  if (B.filtro === 'Buenos Aires') return esLocal(it);
+  if (B.filtro === 'Otras provincias') return procKey(it.procedencia) === 'Otra provincia';
+  if (B.filtro === 'Otros países') return procKey(it.procedencia) === 'Otro país';
   const g = norm(it.genero);
   return g === norm(B.filtro) || g === 'ambos';
 }
 function renderFiltrosBib() {
-  const f = esJugTab() ? ['Todos', 'Masculino', 'Femenino', 'Inactivos'] : ['Todos', 'Masculino', 'Femenino'];
+  const f = esJugTab() ? ['Todos', 'Masculino', 'Femenino', 'Invitados', 'Inactivos'] : ['Todos', 'Buenos Aires', 'Otras provincias', 'Otros países', 'Masculino', 'Femenino'];
   if (!f.includes(B.filtro)) B.filtro = 'Todos';
   document.getElementById('libFiltros').innerHTML = f.map(x => `<button type="button" class="pill" data-act="filtro" data-f="${x}" aria-pressed="${B.filtro === x}">${x}</button>`).join('');
 }
@@ -513,11 +546,11 @@ function renderGridBib() {
   }
   html += items.map(it => {
     const img = jug ? it.foto : it.logo;
-    const sub = jug ? [it.genero, it.posicion].filter(Boolean).join(' · ') + (it.activo === false ? ' · inactivo' : '') : [it.sigla, it.genero].filter(Boolean).join(' · ');
+    const sub = jug ? [it.genero, it.posicion].filter(Boolean).join(' · ') + (it.activo === false ? ' · inactivo' : '') : [it.sigla, lugarDe(it) || 'Buenos Aires'].filter(Boolean).join(' · ');
     return `<button type="button" class="lib-card" data-act="sel" data-id="${esc(it.id)}" aria-pressed="${!!(d && d.id === it.id)}">
       <span class="ph${jug ? '' : ' logo'}${it.activo === false ? ' off' : ''}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="ini">${esc(jug ? iniciales(it.nombre) : (it.sigla || iniciales(it.nombre)))}</span>`}
       ${jug && it.numero ? `<span class="dorsal">#${esc(it.numero)}</span>` : ''}</span>
-      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span></button>`;
+      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span>${jug && it.invitado ? tagInvitado : ''}</button>`;
   }).join('');
   document.getElementById('libGrid').innerHTML = html || '<p class="empty" style="grid-column:1/-1">No hay resultados.</p>';
 }
@@ -571,11 +604,14 @@ function renderEditor() {
       <label class="field">Categoría<select class="select" data-f="genero">${genero.map(g => `<option ${norm(d.genero) === norm(g) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
       <label class="field" style="grid-column:1/-1"><span>Posición <span class="opt">(opcional)</span></span><input class="input" data-f="posicion" value="${esc(d.posicion)}" placeholder="Ej: QB, WR, Rusher"></label>
       <label class="check" style="grid-column:1/-1"><input type="checkbox" data-f="activo" ${d.activo !== false ? 'checked' : ''}> Activo (aparece para convocar)</label>
+      <label class="check" style="grid-column:1/-1"><input type="checkbox" data-f="invitado" ${d.invitado ? 'checked' : ''}> Invitado (no es del plantel fijo: no se convoca solo en los torneos nuevos)</label>
     </div>` : `
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
       <label class="field" style="grid-column:span 2">Nombre<input class="input" data-f="nombre" value="${esc(d.nombre)}" autocomplete="off"></label>
       <label class="field">Sigla<input class="input mono" data-f="sigla" maxlength="4" value="${esc(d.sigla)}" style="text-transform:uppercase"></label>
       <label class="field" style="grid-column:1/-1">Categoría<select class="select" data-f="genero">${genero.map(g => `<option ${norm(d.genero) === norm(g) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+      <label class="field" style="grid-column:1/-1">Procedencia<select class="select" data-f="procedencia">${PROCEDENCIAS.map(p => `<option ${procKey(d.procedencia) === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+      ${esLocal(d) ? '' : `<label class="field" style="grid-column:1/-1">${procKey(d.procedencia) === 'Otro país' ? 'País' : 'Provincia'}<input class="input" data-f="lugar" value="${esc(d.lugar || '')}" placeholder="${procKey(d.procedencia) === 'Otro país' ? 'Ej: Uruguay' : 'Ej: Mendoza'}"></label>`}
     </div>`}
     <div class="row between" style="border-top:1px solid var(--line);padding-top:14px">
       <span class="small" id="edMsg" style="color:var(--accent-ink);font-weight:600">${d.dirty ? 'Cambios sin guardar' : ''}</span>
@@ -592,6 +628,7 @@ function renderEditor() {
       if (f === 'numero') { v = String(v).replace(/\D/g, '').slice(0, 3); inp.value = v; }
       if (f === 'sigla') v = String(v).toUpperCase();
       d[f] = v; marcarSucio();
+      if (f === 'procedencia') { renderEditor(); return; }
       if (f === 'nombre') document.getElementById('edTitulo').textContent = v || (jug ? 'Nuevo jugador' : 'Nuevo equipo');
     });
   });
@@ -649,8 +686,8 @@ async function guardarDraft(btn) {
   if (!String(d.nombre || '').trim()) { toast('Falta el nombre.', 'err'); return; }
   await conBoton(btn, 'Guardando…', async () => {
     const payload = jug
-      ? { id: d.id || undefined, nombre: d.nombre.trim(), numero: d.numero, posicion: d.posicion, genero: d.genero, activo: d.activo !== false, encuadre: d.encuadre }
-      : { id: d.id || undefined, nombre: d.nombre.trim(), sigla: d.sigla, genero: d.genero, encuadre: d.encuadre };
+      ? { id: d.id || undefined, nombre: d.nombre.trim(), numero: d.numero, posicion: d.posicion, genero: d.genero, activo: d.activo !== false, invitado: !!d.invitado, encuadre: d.encuadre }
+      : { id: d.id || undefined, nombre: d.nombre.trim(), sigla: d.sigla, genero: d.genero, procedencia: procKey(d.procedencia), lugar: esLocal(d) ? '' : (d.lugar || '').trim(), encuadre: d.encuadre };
     const fuente = d.nuevaImg || (d.encCambio ? d.src : null);
     if (fuente) {
       try {
@@ -706,7 +743,7 @@ function equiposGenero() {
 function asegurarSeleccion() {
   if (!W.sel) {
     W.sel = {};
-    jugadoresGenero().forEach(j => { W.sel[j.id] = { on: true, numero: String(j.numero || '') }; });
+    jugadoresGenero().forEach(j => { W.sel[j.id] = { on: !j.invitado, numero: String(j.numero || '') }; });
   }
   if (!W.equipos) {
     W.equipos = [];
@@ -774,7 +811,7 @@ async function pageNuevo() {
     atras: () => { W.paso = Math.max(0, W.paso - 1); renderWizard(); },
     tipo: el => { W.tipo = el.dataset.t; renderWizard(); },
     genero: el => { if (W.genero !== el.dataset.g) { W.genero = el.dataset.g; W.sel = null; W.equipos = null; asegurarSeleccion(); } renderWizard(); },
-    todos: () => { Object.keys(W.sel).forEach(id => { W.sel[id].on = true; }); renderWizard(); },
+    todos: () => { jugadoresGenero().forEach(j => { if (!j.invitado && W.sel[j.id]) W.sel[j.id].on = true; }); renderWizard(); },
     ninguno: () => { Object.keys(W.sel).forEach(id => { W.sel[id].on = false; }); renderWizard(); },
     agregarEq: () => {
       const e = S.bib.equipos.find(x => x.id === W.agregar);
@@ -821,14 +858,16 @@ function renderWizard(error) {
     const cant = Object.keys(W.sel).filter(id => W.sel[id].on).length;
     html = `<div class="row between" style="align-items:flex-end">${cab('¿Quiénes juegan?', `Elegí de la <a href="#/biblioteca">biblioteca</a> (${generoNombre(W.genero)}) los convocados.`)}
         <div class="row" style="gap:12px"><span class="mono accent" style="font-size:28px;font-weight:700">${cant}</span><span class="small muted" style="line-height:1.2">convocados<br>de ${lista.length}</span></div></div>
-      <div class="row"><button type="button" class="btn sm" data-act="todos">Seleccionar todos</button><button type="button" class="btn sm" data-act="ninguno">Limpiar</button></div>
-      ${lista.length ? `<div class="pick-grid">${lista.map(j => {
+      <div class="row"><button type="button" class="btn sm" data-act="todos">Todo el plantel</button><button type="button" class="btn sm" data-act="ninguno">Limpiar</button></div>
+      ${lista.length ? [['Plantel', lista.filter(j => !j.invitado), ''], ['Invitados', lista.filter(j => j.invitado), 'Marcá solo a quienes invitaste a este torneo.']].filter(g => g[1].length).map(([titulo, grupo, ayuda]) => `
+      <div class="stack" style="gap:8px"><div class="row" style="gap:10px;align-items:baseline"><h3 class="h3" style="font-size:18px">${titulo}</h3>${ayuda ? `<span class="small muted">${ayuda}</span>` : ''}</div>
+      <div class="pick-grid">${grupo.map(j => {
         const s = W.sel[j.id] || (W.sel[j.id] = { on: false, numero: String(j.numero || '') });
         const cls = 'input num' + (s.on && rep.includes(s.numero) ? ' dup' : '') + (s.numero !== String(j.numero || '') ? ' changed' : '');
         return `<div class="pick${s.on ? ' on' : ''}">
           <label class="check">${avatar(j.foto, j.nombre, 36, { round: true })}<input type="checkbox" data-on="${esc(j.id)}" ${s.on ? 'checked' : ''}><span style="font-weight:600;min-width:0">${esc(j.nombre)}</span></label>
           <label class="row mono" style="gap:4px;color:var(--muted);font-weight:700">#<input class="${cls}" data-num="${esc(j.id)}" inputmode="numeric" value="${esc(s.numero)}" aria-label="Número de ${esc(j.nombre)} en este torneo"></label></div>`;
-      }).join('')}</div>` : `<p class="empty">No hay jugadores ${generoNombre(W.genero).toLowerCase()}s activos en la biblioteca. <a href="#/biblioteca">Cargalos acá</a>.</p>`}
+      }).join('')}</div></div>`).join('') : `<p class="empty">No hay jugadores ${generoNombre(W.genero).toLowerCase()}s activos en la biblioteca. <a href="#/biblioteca">Cargalos acá</a>.</p>`}
       <div class="row small muted" style="gap:6px 20px"><span>El número de la biblioteca viene por defecto; cambialo si en este torneo usa otro.</span><span id="repMsg" class="alert small">${rep.length ? 'Número repetido: #' + rep.join(', #') : ''}</span></div>`;
   } else if (W.paso === 2) {
     const usados = W.equipos.map(e => e.id);
@@ -837,7 +876,7 @@ function renderWizard(error) {
     html = `${cab('¿Qué equipos participan?', `${W.equipos.length} ${W.equipos.length === 1 ? 'equipo' : 'equipos'} en el torneo.`)}
       <div class="row" style="align-items:flex-end">
         <label class="field" style="flex:1 1 260px">Agregar equipo de la biblioteca
-          <select class="select" id="agregarEq"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${disp.map(e => `<option value="${esc(e.id)}" ${W.agregar === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select>
+          <select class="select" id="agregarEq"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${opcionesEquipos(disp, W.agregar)}</select>
 </label>
         <button type="button" class="btn light" data-act="agregarEq">Agregar</button>
       </div>
@@ -845,7 +884,7 @@ function renderWizard(error) {
       ${W.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
         ${W.equipos.map((e, i) => `<li class="row eq-row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'}">
           <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 44, { logo: true })}
-          <span class="team">${esc(e.equipo)}</span>
+          ${nombreEquipo(Object.assign({}, equipoBib(e.equipo, e.id) || {}, e))}
           ${cats ? `<label class="sr" for="cat${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="cat${i}" data-cat="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select>` : ''}
           ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button type="button" class="btn icon" data-act="quitarEq" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">Todavía no agregaste equipos.</p>'}`;
   } else if (W.paso === 3) {
@@ -874,7 +913,7 @@ async function crearTorneoWizard(btn) {
   await conBoton(btn, 'Creando planilla…', async () => {
     const jugadores = Object.keys(W.sel).filter(id => W.sel[id].on).map(id => {
       const j = S.bib.jugadores.find(x => x.id === id);
-      return { id: id, numero: W.sel[id].numero, nombre: j.nombre, posicion: j.posicion, foto: j.foto };
+      return { id: id, numero: W.sel[id].numero, nombre: j.nombre, posicion: j.posicion, foto: j.foto, invitado: !!j.invitado };
     }).sort((a, b) => (parseInt(a.numero, 10) || 999) - (parseInt(b.numero, 10) || 999));
     const r = await api('crearTorneo', {
       temporada: W.temporada.trim(), genero: W.genero, tipo: W.tipo, grupos: Number(W.grupos) || 2,
@@ -1093,7 +1132,7 @@ function tabJugadores(data) {
       <div class="row">${sucio ? '<span class="small" style="color:var(--accent-ink);font-weight:600">Cambios sin guardar</span>' : ''}<button class="btn primary" type="button" data-act="guardarPlantel" ${sucio ? '' : 'disabled'}>Guardar plantel</button></div></div>
     ${conStats ? '<p class="small" style="margin:0;padding:12px 14px;border:1px solid var(--accent);color:var(--accent-ink)">Ya hay partidos jugados: si cambiás el número de alguien, las jugadas viejas quedan con el número anterior.</p>' : ''}
     <div class="row" style="align-items:flex-end">
-      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarJ"><option value="">${disp.length ? 'Elegí un jugador' : 'No hay más jugadores ' + (genero === 'f' ? 'femeninos' : 'masculinos') + ' en la biblioteca'}</option>${disp.map(j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`).join('')}</select></label>
+      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarJ"><option value="">${disp.length ? 'Elegí un jugador' : 'No hay más jugadores ' + (genero === 'f' ? 'femeninos' : 'masculinos') + ' en la biblioteca'}</option>${opcionesJugadores(disp)}</select></label>
       <button class="btn light" type="button" data-act="agregarJ">Agregar</button>
     </div>
     ${T.plantel.length ? `<div class="row" style="justify-content:flex-end;gap:8px">
@@ -1102,7 +1141,7 @@ function tabJugadores(data) {
       <button type="button" class="btn sm" data-act="dirJ" style="min-width:96px" aria-label="${T.ascJ ? 'Orden ascendente; tocá para descendente' : 'Orden descendente; tocá para ascendente'}">${T.ascJ ? '↑ Asc' : '↓ Desc'}</button>
     </div>
     <div class="table-wrap"><table class="t" style="min-width:560px"><thead><tr><th>Jugador</th><th>N.º en este torneo</th><th>Posición</th><th><span class="sr">Quitar</span></th></tr></thead><tbody>
-      ${ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), T.ordenJ, T.ascJ).map(({ p, i }) => `<tr><td><span class="row" style="gap:12px;flex-wrap:nowrap">${avatar(p.foto, p.nombre, 40, { round: true })}<span style="font-weight:600">${esc(p.nombre)}</span></span></td>
+      ${ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), T.ordenJ, T.ascJ).map(({ p, i }) => `<tr><td><span class="row" style="gap:12px;flex-wrap:nowrap">${avatar(p.foto, p.nombre, 40, { round: true })}<span style="font-weight:600">${esc(p.nombre)}</span>${p.invitado ? tagInvitado : ''}</span></td>
         <td><input class="input num${cont[p.numero] > 1 ? ' dup' : ''}" data-pn="${i}" inputmode="numeric" value="${esc(p.numero)}" aria-label="Número de ${esc(p.nombre)}"></td>
         <td class="muted">${esc(p.posicion || '—')}</td>
         <td class="r"><button class="btn icon" type="button" data-act="quitarJ" data-i="${i}" aria-label="Quitar a ${esc(p.nombre)}">${ICON.x}</button></td></tr>`).join('')}
@@ -1129,13 +1168,13 @@ function tabEquipos(data) {
       <span class="small muted">Los logos se cargan y encuadran en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span></div>
       <div class="row">${sucio ? '<span class="small" style="color:var(--accent-ink);font-weight:600">Cambios sin guardar</span>' : ''}<button class="btn primary" type="button" data-act="guardarEquipos" ${sucio ? '' : 'disabled'}>Guardar equipos</button></div></div>
     <div class="row" style="align-items:flex-end">
-      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarE"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${disp.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)}</option>`).join('')}</select></label>
+      <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarE"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${opcionesEquipos(disp, '')}</select></label>
       <button class="btn light" type="button" data-act="agregarE">Agregar</button>
     </div>
     ${T.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
       ${T.equipos.map((e, i) => `<li class="row eq-row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'}">
         <span class="mono muted" style="font-weight:700">${pad2(i + 1)}</span>${avatar(e.logo, e.equipo, 48, { logo: true })}
-        <span class="team">${esc(e.equipo)}</span>
+        ${nombreEquipo(Object.assign({}, equipoBib(e.equipo, e.equipoId) || {}, e))}
         ${copa ? `<label class="sr" for="ec${i}">Grupo de ${esc(e.equipo)}</label><select class="select" id="ec${i}" data-ec="${i}" style="width:auto;min-height:44px"><option value="">Grupo…</option>${cats.map(c => `<option ${e.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : ''}
         ${esFenix(e.equipo) ? '<span style="width:44px;flex:none"></span>' : `<button class="btn icon" type="button" data-act="quitarE" data-i="${i}" aria-label="Quitar ${esc(e.equipo)}">${ICON.x}</button>`}</li>`).join('')}</ul>` : '<p class="empty">No hay equipos.</p>'}
   </div>`;
@@ -1209,7 +1248,7 @@ function bindTorneo() {
       const id = document.getElementById('agregarJ').value;
       const j = S.bib && S.bib.jugadores.find(x => x.id === id);
       if (!j) { toast('Elegí un jugador de la lista.'); return; }
-      T.plantel.push({ jugadorId: j.id, numero: String(j.numero || ''), nombre: j.nombre, posicion: j.posicion, foto: j.foto });
+      T.plantel.push({ jugadorId: j.id, numero: String(j.numero || ''), nombre: j.nombre, posicion: j.posicion, foto: j.foto, invitado: !!j.invitado });
       rerender();
     },
     quitarJ: el => { T.plantel.splice(Number(el.dataset.i), 1); rerender(); },
@@ -1220,7 +1259,7 @@ function bindTorneo() {
       const rep = Object.keys(cont).filter(k => cont[k] > 1);
       if (rep.length) { toast('Hay números repetidos: #' + rep.join(', #'), 'err'); return; }
       if (T.plantel.some(p => !p.numero)) { toast('Todos los jugadores necesitan número.', 'err'); return; }
-      guardarYRefrescar(el, 'Guardando…', 'guardarPlantel', { jugadores: ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), 'numero', true).map(({ p }) => ({ id: p.jugadorId, numero: p.numero, nombre: p.nombre, posicion: p.posicion, foto: p.foto })) },
+      guardarYRefrescar(el, 'Guardando…', 'guardarPlantel', { jugadores: ordenarPlantel(T.plantel.map((p, i) => ({ p: p, i: i })), 'numero', true).map(({ p }) => ({ id: p.jugadorId, numero: p.numero, nombre: p.nombre, posicion: p.posicion, foto: p.foto, invitado: !!p.invitado })) },
         () => { T.plantel = null; toast('Plantel guardado', 'ok'); });
     },
     agregarE: () => {
