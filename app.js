@@ -952,6 +952,100 @@ const PLAYOFF_RONDAS = ['Octavos de final', 'Cuartos de final', 'Semifinal', '3e
 const esRondaPlayoff = j => /octavo|cuarto|semi|final|3er|tercer|playoff/i.test(j || '');
 // "Fecha (jornada)" en dos partes: tipo (Fecha / Grupo / Playoff / Otra) + valor.
 const gruposDe = data => data.torneo.tipo === 'Copa' ? [...new Set(data.equipos.map(e => (e.categoria || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')) : [];
+/* =====================================================================
+ *  CRUCES AUTOMÁTICOS (Copa con varias copas: Oro / Plata / Consolación)
+ *  Los partidos de eliminación se cargan con marcadores:
+ *    "1° Oro", "8° Plata", "2° Consolación"  -> sembrado de cada copa
+ *    "Ganador P31" / "Perdedor P40"           -> resultado de otro partido
+ * ===================================================================== */
+const RE_SEED = /^(\d+)\s*°\s*(.+)$/;
+const RE_GAN = /^(ganador|perdedor)\s+(\S+)$/i;
+const esMarcador = n => RE_SEED.test(String(n || '').trim()) || RE_GAN.test(String(n || '').trim());
+const conResultado = p => p.gl !== '' && p.gv !== '' && p.gl != null && p.gv != null && !isNaN(Number(p.gl)) && !isNaN(Number(p.gv));
+
+function tablaGrupo(equipos, partidos) {
+  const t = {};
+  equipos.forEach(e => { t[e] = { equipo: e, pj: 0, g: 0, emp: 0, p: 0, pf: 0, pc: 0 }; });
+  partidos.forEach(m => {
+    const a = t[m.local], b = t[m.visitante];
+    if (!a || !b || !conResultado(m)) return;
+    const gl = Number(m.gl), gv = Number(m.gv);
+    a.pj++; b.pj++; a.pf += gl; a.pc += gv; b.pf += gv; b.pc += gl;
+    if (gl > gv) { a.g++; b.p++; } else if (gv > gl) { b.g++; a.p++; } else { a.emp++; b.emp++; }
+  });
+  Object.values(t).forEach(r => { r.dif = r.pf - r.pc; r.pts = r.g * 2 + r.emp; });
+  return t;
+}
+// Orden dentro del grupo: puntos (G=2, E=1), entre ellos (mini tabla), diferencia, a favor.
+function ordenarGrupo(equipos, partidos) {
+  const t = tablaGrupo(equipos, partidos);
+  const base = (x, y) => y.pts - x.pts;
+  const filas = Object.values(t).sort(base);
+  const out = [];
+  for (let i = 0; i < filas.length;) {
+    let j = i; while (j < filas.length && filas[j].pts === filas[i].pts) j++;
+    let bloque = filas.slice(i, j);
+    if (bloque.length > 1) {
+      const nombres = bloque.map(r => r.equipo);
+      const mini = tablaGrupo(nombres, partidos.filter(m => nombres.includes(m.local) && nombres.includes(m.visitante)));
+      bloque.sort((x, y) => (mini[y.equipo].pts - mini[x.equipo].pts) || (mini[y.equipo].dif - mini[x.equipo].dif) || (y.dif - x.dif) || (y.pf - x.pf) || x.equipo.localeCompare(y.equipo, 'es'));
+    }
+    out.push(...bloque); i = j;
+  }
+  return out;
+}
+// Comparación entre equipos de distintos grupos (misma posición).
+const cmpEntreGrupos = (x, y) => ((y.pj ? y.pts / y.pj : 0) - (x.pj ? x.pts / x.pj : 0)) || ((y.pj ? y.dif / y.pj : 0) - (x.pj ? x.dif / x.pj : 0)) || ((y.pj ? y.pf / y.pj : 0) - (x.pj ? x.pf / x.pj : 0)) || x.equipo.localeCompare(y.equipo, 'es');
+
+function planCruces(data) {
+  const grupos = gruposDe(data);
+  const fx = data.fixture;
+  const regulares = fx.filter(p => (p.instancia || 'Regular') !== 'Playoff' && !esMarcador(p.local) && !esMarcador(p.visitante));
+  const pendientes = regulares.filter(p => !conResultado(p)).length;
+  // copas y cantidad de cupos según los marcadores cargados
+  const cupos = {}; const orden = [];
+  fx.forEach(p => [p.local, p.visitante].forEach(n => { const m = RE_SEED.exec(String(n || '').trim()); if (!m) return; const c = m[2].trim(); if (!(c in cupos)) { cupos[c] = 0; orden.push(c); } cupos[c] = Math.max(cupos[c], Number(m[1])); }));
+  // tablas por grupo y "pozo" ordenado: primeros, segundos, terceros...
+  const tablas = grupos.map(g => { const eqs = data.equipos.filter(e => (e.categoria || '').trim() === g).map(e => e.equipo); return { g, filas: ordenarGrupo(eqs, regulares.filter(m => eqs.includes(m.local) && eqs.includes(m.visitante))) }; });
+  const maxN = Math.max(0, ...tablas.map(t => t.filas.length));
+  const pozo = [];
+  for (let k = 0; k < maxN; k++) pozo.push(...tablas.map(t => t.filas[k] ? Object.assign({ pos: k + 1, grupo: t.g }, t.filas[k]) : null).filter(Boolean).sort(cmpEntreGrupos));
+  const copas = {}; let idx = 0;
+  orden.forEach(c => { copas[c] = pozo.slice(idx, idx + cupos[c]); idx += cupos[c]; });
+  // reemplazos
+  const porId = {}; fx.forEach(p => { porId[String(p.id).trim().toUpperCase()] = p; });
+  const resolver = n => {
+    const s0 = String(n || '').trim();
+    let m = RE_SEED.exec(s0);
+    if (m) { const r = (copas[m[2].trim()] || [])[Number(m[1]) - 1]; return r ? r.equipo : n; }
+    m = RE_GAN.exec(s0);
+    if (m) { const q = porId[m[2].toUpperCase()]; if (!q || esMarcador(q.local) || esMarcador(q.visitante) || !conResultado(q) || Number(q.gl) === Number(q.gv)) return n;
+      const ganaL = Number(q.gl) > Number(q.gv); const gan = /^g/i.test(m[1]); return (gan === ganaL) ? q.local : q.visitante; }
+    return n;
+  };
+  const nuevos = fx.map(p => Object.assign({}, p));
+  let cambios = 0;
+  for (let vuelta = 0; vuelta < 4; vuelta++) nuevos.forEach(p => { ['local', 'visitante'].forEach(k => { if (esMarcador(p[k])) { const v = resolver(p[k]); if (v !== p[k]) { p[k] = v; cambios++; } } }); nuevos.forEach(q => { porId[String(q.id).trim().toUpperCase()] = q; }); });
+  return { pendientes, copas, orden, nuevos, cambios, tablas };
+}
+
+function dialogoCruces(plan) {
+  return new Promise(res => {
+    const d = document.createElement('dialog');
+    d.className = 'modal';
+    const lista = c => `<div class="stack" style="gap:6px"><div class="kicker">${esc(c)}</div><ol class="cruces-ol">${(plan.copas[c] || []).map(r => `<li><b>${esc(r.equipo)}</b> <span class="muted small">${r.pos}° ${esc(r.grupo)} · ${r.g}G ${r.p}P · ${r.dif > 0 ? '+' : ''}${r.dif}</span></li>`).join('')}</ol></div>`;
+    d.innerHTML = `<form method="dialog" class="stack" style="gap:16px;max-width:640px">
+      <h2 class="h2" style="font-size:30px">Armar cruces</h2>
+      ${plan.pendientes ? `<p class="alert" style="margin:0">Faltan ${plan.pendientes} partido${plan.pendientes === 1 ? '' : 's'} de grupo sin resultado: las posiciones todavía pueden cambiar.</p>` : ''}
+      <p class="muted" style="margin:0">Orden: puntos (G=2, E=1), entre ellos, diferencia y puntos a favor. Entre grupos se compara por promedio. Se reemplazan ${plan.cambios} lugar${plan.cambios === 1 ? '' : 'es'} del fixture; después podés editar cualquier cruce a mano.</p>
+      <div class="cruces-grid">${plan.orden.map(lista).join('')}</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" value="no">Cancelar</button><button class="btn primary" value="si" ${plan.cambios ? '' : 'disabled'}>Guardar cruces</button></div></form>`;
+    document.body.appendChild(d);
+    d.addEventListener('close', () => { res(d.returnValue === 'si'); d.remove(); });
+    d.showModal();
+  });
+}
+
 const proximaFecha = data => 1 + Math.max(0, ...data.fixture.map(p => { const m = /^fecha\s+(\d+)$/i.exec((p.jornada || '').trim()); return m ? Number(m[1]) : 0; }));
 function partesJornada(j, data) {
   const v = (j || '').trim();
@@ -1097,7 +1191,7 @@ function tabFixture(data) {
       <p class="alert" id="fxErr" role="alert"></p>
       <div class="row"><button class="btn primary" type="button" data-act="agregarPartido">+ Agregar partido</button><span class="small muted">La fecha, el día y la cancha quedan cargados para el próximo.</span></div>
     </section>
-    ${data.fixture.length ? `<div class="stack"><h2 class="h3">Fixture · ${data.fixture.length} partidos</h2>
+    ${data.fixture.length ? `<div class="stack"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="h3">Fixture · ${data.fixture.length} partidos</h2>${data.fixture.some(p => esMarcador(p.local) || esMarcador(p.visitante)) ? `<button class="btn primary" type="button" data-act="armarCruces">Armar cruces</button>` : ''}</div>
       <div class="table-wrap"><table class="t" style="min-width:980px"><thead><tr><th>Fecha</th><th>Día</th><th>Hora</th><th>Partido</th><th>Cancha</th><th>Instancia</th><th>Resultado</th><th>Anotador</th><th><span class="sr">Quitar</span></th></tr></thead>
       <tbody>${filas}</tbody></table></div>
       <span class="small muted">El resultado de los partidos de FENIX lo completa el anotador; el de los demás lo cargás acá y va directo a Posiciones.</span></div>`
@@ -1270,6 +1364,12 @@ function bindTorneo() {
       const pj = partesJornada(T.form.jornada, data());
       const n = Math.max(1, (pj.tipo === 'fecha' ? pj.n : 0) + Number(el.dataset.d));
       T.form.jornada = 'Fecha ' + n; T.form.instancia = 'Regular'; rerender();
+    },
+    armarCruces: async el => {
+      const plan = planCruces(data());
+      if (!plan.orden.length && !plan.cambios) { toast('No hay cruces para armar todavía.', 'warn'); return; }
+      if (!(await dialogoCruces(plan))) return;
+      guardarYRefrescar(el, 'Armando…', 'guardarFixture', { partidos: plan.nuevos }, () => toast('Cruces actualizados', 'ok'));
     },
     agregarPartido: el => {
       const f = T.form;

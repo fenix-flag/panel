@@ -263,3 +263,8 @@ table.t tr.click:hover { background: #1A1B20; }
 .jnum .btn.icon { width: 40px; min-height: 42px; font: 700 18px var(--mono); }
 .jnum input { border: 0; background: transparent; text-align: center; min-width: 0; flex: 1; -moz-appearance: textfield; }
 .jnum input::-webkit-outer-spin-button, .jnum input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ---- Armar cruces ---- */
+.cruces-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.cruces-ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.cruces-ol li { font-size: 14px; }
