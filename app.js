@@ -146,6 +146,26 @@ function opcionesEquipos(lista, sel) {
       `<option value="${esc(e.id)}" ${sel === e.id ? 'selected' : ''}>${esc(e.nombre)}${lugarDe(e) ? ' · ' + esc(lugarDe(e)) : ''}</option>`).join('')}</optgroup>`;
   }).join('');
 }
+// Buscador de equipos: filtra el desplegable que tiene al lado (data-filtra="<id del select>").
+const LISTAS_EQ = {};
+document.addEventListener('input', e => {
+  const inp = e.target.closest && e.target.closest('[data-filtra]'); if (!inp) return;
+  const id = inp.dataset.filtra, sel = document.getElementById(id); if (!sel) return;
+  const q = norm(inp.value), lista = LISTAS_EQ[id] || [];
+  const f = q ? lista.filter(x => norm([x.nombre, x.sigla, lugarDe(x), x.procedencia].filter(Boolean).join(' ')).includes(q)) : lista;
+  sel.innerHTML = `<option value="">${!f.length ? 'Sin resultados' : q ? f.length + (f.length === 1 ? ' resultado' : ' resultados') : 'Elegí un equipo'}</option>` + opcionesEquipos(f, f.length === 1 ? f[0].id : '');
+  if (f.length === 1) sel.value = f[0].id;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+});
+document.addEventListener('keydown', e => {
+  const inp = e.target.closest && e.target.closest('[data-filtra]'); if (!inp || e.key !== 'Enter') return;
+  e.preventDefault();
+  const id = inp.dataset.filtra, sel = document.getElementById(id);
+  if (!sel || !sel.value) { toast('Elegí un equipo de la lista.'); return; }
+  const b = document.querySelector(`[data-act="${id}"]`); if (b) b.click();
+  setTimeout(() => { const n = document.querySelector(`[data-filtra="${id}"]`); if (n) n.focus(); }, 30);
+});
+
 // Opciones del desplegable de jugadores: plantel fijo y, aparte, invitados.
 function opcionesJugadores(lista) {
   const op = j => `<option value="${esc(j.id)}">${esc(j.nombre)}${j.numero ? ' · #' + esc(j.numero) : ''}</option>`;
@@ -783,6 +803,11 @@ async function pageNuevo() {
   renderWizard();
 
   view.oninput = e => {
+    if (e.target.id === 'buscaPick') {
+      W.q = e.target.value; const q = norm(W.q);
+      view.querySelectorAll('#pickEq .pk').forEach(b => { b.hidden = !!q && !b.dataset.busca.includes(q); });
+      return;
+    }
     const k = e.target.dataset.w;
     if (k) { W[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; return; }
     const n = e.target.dataset.num;
@@ -802,8 +827,16 @@ async function pageNuevo() {
   view.onchange = e => {
     if (e.target.dataset.w) { W[e.target.dataset.w] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; }
     if (e.target.dataset.on) { W.sel[e.target.dataset.on].on = e.target.checked; renderWizard(); }
-    if (e.target.dataset.cat) { W.equipos[Number(e.target.dataset.cat)].categoria = e.target.value; }
+    if (e.target.dataset.cat) { W.equipos[Number(e.target.dataset.cat)].categoria = e.target.value; renderWizard(); }
     if (e.target.id === 'agregarEq') { W.agregar = e.target.value; }
+  };
+  view.onkeydown = e => {
+    if (e.target.id !== 'buscaPick' || e.key !== 'Enter') return;
+    e.preventDefault();
+    const vis = [...view.querySelectorAll('#pickEq .pk')].filter(b => !b.hidden);
+    if (vis.length !== 1) { toast(vis.length ? 'Hay varios resultados: tocá el equipo.' : 'Sin resultados.'); return; }
+    W.q = ''; e.target.value = ''; vis[0].click();
+    const b = document.getElementById('buscaPick'); if (b) b.focus();
   };
   bind({
     ir: el => { const p = Number(el.dataset.p); if (p > W.paso) { for (let i = W.paso; i < p; i++) { const er = errorPaso(i); if (er) { W.paso = i; renderWizard(er); return; } } } W.paso = p; renderWizard(); },
@@ -813,6 +846,14 @@ async function pageNuevo() {
     genero: el => { if (W.genero !== el.dataset.g) { W.genero = el.dataset.g; W.sel = null; W.equipos = null; asegurarSeleccion(); } renderWizard(); },
     todos: () => { jugadoresGenero().forEach(j => { if (!j.invitado && W.sel[j.id]) W.sel[j.id].on = true; }); renderWizard(); },
     ninguno: () => { Object.keys(W.sel).forEach(id => { W.sel[id].on = false; }); renderWizard(); },
+    pickEq: el => {
+      const id = el.dataset.id, i = W.equipos.findIndex(e => e.id === id);
+      if (i >= 0) { if (esFenix(W.equipos[i].equipo)) { toast('FENIX siempre participa.'); return; } W.equipos.splice(i, 1); }
+      else { const e = S.bib.equipos.find(x => x.id === id); if (e) W.equipos.push({ id: e.id, equipo: e.nombre, logo: e.logo, categoria: '' }); }
+      const enfocar = document.activeElement && document.activeElement.id === 'buscaPick';
+      renderWizard();
+      const b = document.getElementById('buscaPick'); if (b && enfocar) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
+    },
     agregarEq: () => {
       const e = S.bib.equipos.find(x => x.id === W.agregar);
       if (!e) { toast('Elegí un equipo de la lista.'); return; }
@@ -870,16 +911,18 @@ function renderWizard(error) {
       }).join('')}</div></div>`).join('') : `<p class="empty">No hay jugadores ${generoNombre(W.genero).toLowerCase()}s activos en la biblioteca. <a href="#/biblioteca">Cargalos acá</a>.</p>`}
       <div class="row small muted" style="gap:6px 20px"><span>El número de la biblioteca viene por defecto; cambialo si en este torneo usa otro.</span><span id="repMsg" class="alert small">${rep.length ? 'Número repetido: #' + rep.join(', #') : ''}</span></div>`;
   } else if (W.paso === 2) {
-    const usados = W.equipos.map(e => e.id);
-    const disp = equiposGenero().filter(e => !usados.includes(e.id));
+    const todos = equiposGenero().slice().sort((a, b) => (esFenix(b.nombre) - esFenix(a.nombre)) || a.nombre.localeCompare(b.nombre, 'es'));
+    const elegidos = new Set(W.equipos.map(e => e.id));
     const cats = W.tipo === 'Copa' ? grupoLetras(clamp(parseInt(W.grupos, 10) || 2, 2, 8)) : null;
-    html = `${cab('¿Qué equipos participan?', `${W.equipos.length} ${W.equipos.length === 1 ? 'equipo' : 'equipos'} en el torneo.`)}
-      <div class="row" style="align-items:flex-end">
-        <label class="field" style="flex:1 1 260px">Agregar equipo de la biblioteca
-          <select class="select" id="agregarEq"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${opcionesEquipos(disp, W.agregar)}</select>
-</label>
-        <button type="button" class="btn light" data-act="agregarEq">Agregar</button>
-      </div>
+    const q = norm(W.q || '');
+    const coincide = e => !q || norm([e.nombre, e.sigla, lugarDe(e)].filter(Boolean).join(' ')).includes(q);
+    const porGrupo = cats ? cats.map(c => [c, W.equipos.filter(e => e.categoria === c).length]).concat([['Sin grupo', W.equipos.filter(e => !e.categoria).length]]) : [];
+    html = `${cab('¿Qué equipos participan?', 'Tocá los equipos para sumarlos o sacarlos del torneo.')}
+      <div class="eqc-bar"><div class="eqc-n"><b>${W.equipos.length}</b><span>${W.equipos.length === 1 ? 'equipo seleccionado' : 'equipos seleccionados'}</span></div>
+        ${cats ? `<div class="eqc-grupos">${porGrupo.filter(([c, n]) => c !== 'Sin grupo' || n).map(([c, n]) => `<span class="eqc-g ${c === 'Sin grupo' ? 'warn' : ''}">${esc(c)} <b>${n}</b></span>`).join('')}</div>` : ''}</div>
+      <label class="field">Buscar<input class="input" type="search" id="buscaPick" value="${esc(W.q || '')}" placeholder="Nombre, sigla o lugar… (Enter suma el único resultado)" autocomplete="off"></label>
+      <div class="pick-eq" id="pickEq">${todos.map(e => `<button type="button" class="pk ${elegidos.has(e.id) ? 'on' : ''} ${esFenix(e.nombre) ? 'fx' : ''}" data-act="pickEq" data-id="${esc(e.id)}" data-busca="${esc(norm([e.nombre, e.sigla, lugarDe(e)].filter(Boolean).join(' ')))}" ${coincide(e) ? '' : 'hidden'} aria-pressed="${elegidos.has(e.id)}">
+          ${avatar(e.logo, e.nombre, 32, { logo: true })}<span class="pk-n">${esc(e.nombre)}${lugarDe(e) ? `<small>${esc(lugarDe(e))}</small>` : ''}</span><i class="pk-c" aria-hidden="true">${elegidos.has(e.id) ? '✓' : '+'}</i></button>`).join('')}</div>
       <span class="small muted" style="margin-top:-8px">¿No está? Crealo en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span>
       ${W.equipos.length ? `<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;background:var(--line);border:1px solid var(--line)">
         ${W.equipos.map((e, i) => `<li class="row eq-row" style="background:${esFenix(e.equipo) ? 'var(--fenix-row)' : 'var(--surface)'}">
@@ -1289,6 +1332,7 @@ function tabEquipos(data) {
   const g = norm(data.torneo.genero);
   const en = new Set(T.equipos.map(e => norm(e.equipo)));
   const disp = S.bib ? S.bib.equipos.filter(e => (norm(e.genero) === 'ambos' || norm(e.genero) === g) && !en.has(norm(e.nombre))) : [];
+  LISTAS_EQ.agregarE = disp;
   const copa = data.torneo.tipo === 'Copa';
   const cats = copa ? [...new Set(grupoLetras(4).concat(T.equipos.map(e => e.categoria).filter(Boolean)))].sort() : null;
   return `<div class="stack-lg">
@@ -1296,6 +1340,7 @@ function tabEquipos(data) {
       <span class="small muted">Los logos se cargan y encuadran en la <a href="#/biblioteca/equipos">Biblioteca</a>.</span></div>
       <div class="row">${sucio ? '<span class="small" style="color:var(--accent-ink);font-weight:600">Cambios sin guardar</span>' : ''}<button class="btn primary" type="button" data-act="guardarEquipos" ${sucio ? '' : 'disabled'}>Guardar equipos</button></div></div>
     <div class="row" style="align-items:flex-end">
+      <label class="field" style="flex:0 1 240px">Buscar<input class="input" type="search" data-filtra="agregarE" placeholder="Nombre, sigla o lugar…" autocomplete="off"></label>
       <label class="field" style="flex:1 1 260px">Agregar de la biblioteca<select class="select" id="agregarE"><option value="">${disp.length ? 'Elegí un equipo' : 'No hay más equipos en la biblioteca'}</option>${opcionesEquipos(disp, '')}</select></label>
       <button class="btn light" type="button" data-act="agregarE">Agregar</button>
     </div>
