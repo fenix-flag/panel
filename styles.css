@@ -287,3 +287,23 @@ table.t tr.click:hover { background: #1A1B20; }
 .pk .pk-c { font-style: normal; width: 24px; height: 24px; flex: none; border-radius: 50%; border: 1px solid var(--line-2); display: flex; align-items: center; justify-content: center; font: 700 13px var(--mono); color: var(--muted); }
 .pk.on .pk-c { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .pk[hidden] { display: none; }
+
+/* ---- Posiciones del jugador ---- */
+.poschips { display: flex; flex-direction: column; gap: 8px; }
+.posgrp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.posgrp-t { font: 700 12px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); min-width: 64px; }
+.posgrp-t.d { color: #B8B2F5; }
+.poschip { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 10px 4px 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; }
+.poschip b { font: 700 12px var(--mono); color: var(--ink); min-width: 40px; text-align: center; padding: 3px 5px; border-radius: 3px; background: var(--line); }
+.poschip.on { border-color: var(--accent); color: var(--ink); background: rgba(249,115,22,.08); }
+.poschip.on b { background: var(--accent); color: var(--bg); }
+.poschip.d.on { border-color: #B8B2F5; background: rgba(184,178,245,.08); }
+.poschip.d.on b { background: #B8B2F5; color: #15112B; }
+.poschip.pmain::after { content: "★"; color: var(--accent-ink); font-size: 12px; }
+.ptags { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin-top: 4px; }
+.ptag { font: 700 10px var(--mono); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--line-2); color: var(--muted); }
+.ptag.pmain { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.ptag.o { color: var(--accent-ink); border-color: rgba(249,115,22,.4); }
+.ptag.d { color: #B8B2F5; border-color: rgba(184,178,245,.4); }
+.posgrp-t { flex-basis: 100%; }
+.poschip { width: auto !important; flex: none !important; flex-direction: row !important; }

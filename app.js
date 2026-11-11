@@ -125,7 +125,7 @@ function loadCfg() {
 function saveCfg(c) { try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) { /* sin storage */ } }
 
 // Versión de Code.gs con la que se probó este panel.
-const VERSION_ESPERADA = '2026-10-28a';
+const VERSION_ESPERADA = '2026-11-11a';
 
 /* ---------- Procedencia de equipos e invitados ---------- */
 const PROCEDENCIAS = ['Buenos Aires', 'Otra provincia', 'Otro país'];
@@ -436,8 +436,22 @@ function ordenarBib(lista) {
 }
 const esJugTab = () => B.tab === 'jugadores';
 
+// Posiciones de flag 5v5
+const POS_ATQ = [['QB', 'Mariscal'], ['CEN', 'Centro'], ['WR', 'Receptor']];
+const POS_DEF = [['RUSH', 'Rusher'], ['LB', 'Linebacker'], ['COR', 'Corner'], ['SAF', 'Safety']];
+const POS_ALIAS = { C: 'CEN', CENTRO: 'CEN', CENTER: 'CEN', RUSHER: 'RUSH', CORNER: 'COR', CB: 'COR', SAFETY: 'SAF', S: 'SAF', MARISCAL: 'QB', RECEPTOR: 'WR' };
+const normPos = p => { const k = String(p || '').trim().toUpperCase(); return POS_ALIAS[k] || k; };
+const esPosDef = p => POS_DEF.some(x => x[0] === p);
+function listaPos(it) {
+  const out = [];
+  [it.posicion].concat(Array.isArray(it.posiciones) ? it.posiciones : String(it.posiciones || '').split(/[,;/]+/)).map(normPos).forEach(x => { if (x && !out.includes(x)) out.push(x); });
+  return out;
+}
+const posTags = it => listaPos(it).map((p, i) => `<span class="ptag ${i === 0 && it.posicion ? 'pmain' : esPosDef(p) ? 'd' : 'o'}">${esc(p)}</span>`).join('');
+
 function draftDe(it, tipo) {
   const jug = tipo === 'jugadores';
+  if (jug) it = Object.assign({}, it, { posicion: normPos(it.posicion), posiciones: listaPos(it) });
   return Object.assign({}, it, {
     _tipo: tipo,
     encuadre: Object.assign({ x: 0, y: 0, z: 1 }, it.encuadre || {}),
@@ -503,7 +517,7 @@ async function pageBiblioteca(tab) {
       if (B.draft && B.draft.dirty && B.pendiente !== '__nuevo') { B.pendiente = '__nuevo'; toast('Hay cambios sin guardar. Tocá de nuevo para descartarlos.'); return; }
       B.pendiente = null;
       const base = jug
-        ? { id: '', nombre: '', numero: '', posicion: '', genero: B.filtro === 'Femenino' ? 'Femenino' : 'Masculino', activo: true, invitado: B.filtro === 'Invitados' }
+        ? { id: '', nombre: '', numero: '', posicion: '', posiciones: [], genero: B.filtro === 'Femenino' ? 'Femenino' : 'Masculino', activo: true, invitado: B.filtro === 'Invitados' }
         : { id: '', nombre: '', sigla: '', genero: 'Ambos', procedencia: B.filtro === 'Otras provincias' ? 'Otra provincia' : B.filtro === 'Otros países' ? 'Otro país' : 'Buenos Aires', lugar: '' };
       B.draft = draftDe(base, B.tab); B.draft.dirty = true;
       renderGridBib(); renderEditor();
@@ -566,11 +580,11 @@ function renderGridBib() {
   }
   html += items.map(it => {
     const img = jug ? it.foto : it.logo;
-    const sub = jug ? [it.genero, it.posicion].filter(Boolean).join(' · ') + (it.activo === false ? ' · inactivo' : '') : [it.sigla, lugarDe(it) || 'Buenos Aires'].filter(Boolean).join(' · ');
+    const sub = jug ? [it.genero].filter(Boolean).join(' · ') + (it.activo === false ? ' · inactivo' : '') : [it.sigla, lugarDe(it) || 'Buenos Aires'].filter(Boolean).join(' · ');
     return `<button type="button" class="lib-card" data-act="sel" data-id="${esc(it.id)}" aria-pressed="${!!(d && d.id === it.id)}">
       <span class="ph${jug ? '' : ' logo'}${it.activo === false ? ' off' : ''}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="ini">${esc(jug ? iniciales(it.nombre) : (it.sigla || iniciales(it.nombre)))}</span>`}
       ${jug && it.numero ? `<span class="dorsal">#${esc(it.numero)}</span>` : ''}</span>
-      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span>${jug && it.invitado ? tagInvitado : ''}</button>`;
+      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span>${jug && listaPos(it).length ? `<span class="ptags">${posTags(it)}</span>` : ''}${jug && it.invitado ? tagInvitado : ''}</button>`;
   }).join('');
   document.getElementById('libGrid').innerHTML = html || '<p class="empty" style="grid-column:1/-1">No hay resultados.</p>';
 }
@@ -622,7 +636,13 @@ function renderEditor() {
       <label class="field" style="grid-column:1/-1">Nombre<input class="input" data-f="nombre" value="${esc(d.nombre)}" autocomplete="off"></label>
       <label class="field">Número<input class="input mono" data-f="numero" inputmode="numeric" maxlength="3" value="${esc(d.numero)}"></label>
       <label class="field">Categoría<select class="select" data-f="genero">${genero.map(g => `<option ${norm(d.genero) === norm(g) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
-      <label class="field" style="grid-column:1/-1"><span>Posición <span class="opt">(opcional)</span></span><input class="input" data-f="posicion" value="${esc(d.posicion)}" placeholder="Ej: QB, WR, Rusher"></label>
+      <label class="field" style="grid-column:1/-1"><span>Posición principal <span class="opt">(opcional)</span></span><select class="select" data-f="posicion"><option value="">—</option>
+        <optgroup label="Ataque">${POS_ATQ.map(([c, l]) => `<option value="${c}" ${d.posicion === c ? 'selected' : ''}>${c} · ${l}</option>`).join('')}</optgroup>
+        <optgroup label="Defensa">${POS_DEF.map(([c, l]) => `<option value="${c}" ${d.posicion === c ? 'selected' : ''}>${c} · ${l}</option>`).join('')}</optgroup>
+        ${d.posicion && ![...POS_ATQ, ...POS_DEF].some(x => x[0] === d.posicion) ? `<option value="${esc(d.posicion)}" selected>${esc(d.posicion)}</option>` : ''}</select></label>
+      <div class="field" style="grid-column:1/-1"><span>También juega de</span>
+        <div class="poschips" id="posChips">${[['Ataque', POS_ATQ, ''], ['Defensa', POS_DEF, 'd']].map(([t, L, c]) => `<div class="posgrp"><span class="posgrp-t ${c}">${t}</span>${L.map(([p, l]) => `<button type="button" class="poschip ${c}" data-pos="${p}" aria-pressed="false"><b>${p}</b>${l}</button>`).join('')}</div>`).join('')}</div>
+        <span class="small muted">Tocá para marcar o desmarcar. La principal (★) siempre queda marcada.</span></div>
       <label class="check" style="grid-column:1/-1"><input type="checkbox" data-f="activo" ${d.activo !== false ? 'checked' : ''}> Activo (aparece para convocar)</label>
       <label class="check" style="grid-column:1/-1"><input type="checkbox" data-f="invitado" ${d.invitado ? 'checked' : ''}> Invitado (no es del plantel fijo: no se convoca solo en los torneos nuevos)</label>
     </div>` : `
@@ -639,6 +659,23 @@ function renderEditor() {
     </div>`;
   aplicarEncuadre();
 
+  // Posiciones (principal + secundarias)
+  const pintarPos = () => {
+    if (!jug) return;
+    if (!Array.isArray(d.posiciones)) d.posiciones = listaPos(d);
+    if (d.posicion && !d.posiciones.includes(d.posicion)) d.posiciones.unshift(d.posicion);
+    ed.querySelectorAll('[data-pos]').forEach(b => {
+      const on = d.posiciones.includes(b.dataset.pos), main = b.dataset.pos === d.posicion;
+      b.classList.toggle('on', on); b.classList.toggle('pmain', main); b.setAttribute('aria-pressed', on);
+    });
+  };
+  ed.querySelectorAll('[data-pos]').forEach(b => b.addEventListener('click', () => {
+    const p = b.dataset.pos;
+    if (p === d.posicion) { toast('Es la posición principal: cambiala en el desplegable.'); return; }
+    d.posiciones = d.posiciones.includes(p) ? d.posiciones.filter(x => x !== p) : d.posiciones.concat([p]);
+    marcarSucio(); pintarPos();
+  }));
+  pintarPos();
   // Campos
   ed.querySelectorAll('[data-f]').forEach(inp => {
     const ev = inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'input';
@@ -648,6 +685,7 @@ function renderEditor() {
       if (f === 'numero') { v = String(v).replace(/\D/g, '').slice(0, 3); inp.value = v; }
       if (f === 'sigla') v = String(v).toUpperCase();
       d[f] = v; marcarSucio();
+      if (f === 'posicion') pintarPos();
       if (f === 'procedencia') { renderEditor(); return; }
       if (f === 'nombre') document.getElementById('edTitulo').textContent = v || (jug ? 'Nuevo jugador' : 'Nuevo equipo');
     });
@@ -706,7 +744,7 @@ async function guardarDraft(btn) {
   if (!String(d.nombre || '').trim()) { toast('Falta el nombre.', 'err'); return; }
   await conBoton(btn, 'Guardando…', async () => {
     const payload = jug
-      ? { id: d.id || undefined, nombre: d.nombre.trim(), numero: d.numero, posicion: d.posicion, genero: d.genero, activo: d.activo !== false, invitado: !!d.invitado, encuadre: d.encuadre }
+      ? { id: d.id || undefined, nombre: d.nombre.trim(), numero: d.numero, posicion: d.posicion, posiciones: listaPos(d), genero: d.genero, activo: d.activo !== false, invitado: !!d.invitado, encuadre: d.encuadre }
       : { id: d.id || undefined, nombre: d.nombre.trim(), sigla: d.sigla, genero: d.genero, procedencia: procKey(d.procedencia), lugar: esLocal(d) ? '' : (d.lugar || '').trim(), encuadre: d.encuadre };
     const fuente = d.nuevaImg || (d.encCambio ? d.src : null);
     if (fuente) {
