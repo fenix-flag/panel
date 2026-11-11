@@ -1042,7 +1042,9 @@ const cmpEntreGrupos = (x, y) => ((y.pj ? y.pts / y.pj : 0) - (x.pj ? x.pts / x.
 
 function planCruces(data) {
   const grupos = gruposDe(data);
-  const fx = data.fixture;
+  // nombres sin importar mayúsculas ni tildes: se usa el nombre tal como está en Equipos
+  const canon = {}; data.equipos.forEach(e => { canon[norm(e.equipo)] = e.equipo; });
+  const fx = data.fixture.map(p => Object.assign({}, p, { local: canon[norm(p.local)] || p.local, visitante: canon[norm(p.visitante)] || p.visitante }));
   const regulares = fx.filter(p => (p.instancia || 'Regular') !== 'Playoff' && !esMarcador(p.local) && !esMarcador(p.visitante));
   const pendientes = regulares.filter(p => !conResultado(p)).length;
   // copas y cantidad de cupos según los marcadores cargados
