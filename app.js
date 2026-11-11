@@ -414,7 +414,7 @@ async function exportarRecorte(src, enc, fit, size, mime) {
 /* =====================================================================
  *  BIBLIOTECA
  * ===================================================================== */
-const B = { tab: 'jugadores', filtro: 'Todos', q: '', draft: null, pendiente: null, orden: 'numero', asc: true, ascEq: true };
+const B = { tab: 'jugadores', f: { gen: 'Todos', tipo: 'Todos', est: 'Todos', proc: 'Todos', pos: [], modo: 'any' }, dd: null, q: '', draft: null, pendiente: null, orden: 'numero', asc: true, ascEq: true };
 const ORDEN_JUG = [['numero', 'Número'], ['nombre', 'Nombre'], ['posicion', 'Posición']];
 // Ordena la lista visible. En equipos, FENIX va siempre primero.
 function ordenarBib(lista) {
@@ -445,9 +445,11 @@ const esPosDef = p => POS_DEF.some(x => x[0] === p);
 function listaPos(it) {
   const out = [];
   [it.posicion].concat(Array.isArray(it.posiciones) ? it.posiciones : String(it.posiciones || '').split(/[,;/]+/)).map(normPos).forEach(x => { if (x && !out.includes(x)) out.push(x); });
-  return out;
+  if (out.length < 2 || !it.posicion) return out;
+  const ord = POS_ATQ.concat(POS_DEF).map(x => x[0]), o = p => { const k = ord.indexOf(p); return k < 0 ? 99 : k; };
+  return [out[0]].concat(out.slice(1).sort((x, y) => o(x) - o(y)));
 }
-const posTags = it => listaPos(it).map((p, i) => `<span class="ptag ${i === 0 && it.posicion ? 'pmain' : esPosDef(p) ? 'd' : 'o'}">${esc(p)}</span>`).join('');
+const posTags = (it, hit) => listaPos(it).map((p, i) => `<span class="ptag ${i === 0 && it.posicion ? 'pmain' : esPosDef(p) ? 'd' : 'o'}${hit && hit.includes(p) && (B.f.modo !== 'main' || i === 0) ? ' hit' : ''}">${esc(p)}</span>`).join('');
 
 function draftDe(it, tipo) {
   const jug = tipo === 'jugadores';
@@ -492,7 +494,7 @@ async function pageBiblioteca(tab) {
     <div class="lib">
       <section class="lib-list" aria-label="Catálogo">
         <div class="row between" style="align-items:flex-start;gap:12px">
-          <div class="pills" role="group" aria-label="Filtrar" id="libFiltros"></div>
+          <div class="ffbar" role="group" aria-label="Filtrar" id="libFiltros"></div>
           <div class="row" style="gap:8px">
             ${jug ? `<label class="sr" for="orden">Ordenar por</label>
             <select class="select" id="orden" style="width:auto;min-height:44px">${ORDEN_JUG.map(([k, l]) => `<option value="${k}" ${B.orden === k ? 'selected' : ''}>Ordenar por ${l.toLowerCase()}</option>`).join('')}</select>`
@@ -500,6 +502,7 @@ async function pageBiblioteca(tab) {
             <button type="button" class="btn sm" id="dir" data-act="dir" style="min-width:96px"></button>
           </div>
         </div>
+        <div class="ffchips" id="libChips"></div>
         <div class="lib-grid" id="libGrid"></div>
       </section>
       <section class="editor" id="editor" aria-labelledby="edTitulo"></section>
@@ -511,14 +514,21 @@ async function pageBiblioteca(tab) {
   if (orden) orden.onchange = () => { B.orden = orden.value; B.asc = true; renderGridBib(); };
   bind({
     dir: () => { if (esJugTab()) B.asc = !B.asc; else B.ascEq = !B.ascEq; renderGridBib(); },
-    filtro: el => { B.filtro = el.dataset.f; renderFiltrosBib(); renderGridBib(); },
+    ddOpen: el => { B.dd = B.dd === el.dataset.k ? null : el.dataset.k; renderFiltrosBib(); },
+    ddSet: el => { B.f[el.dataset.k] = el.dataset.v; B.dd = null; refrescarFiltros(); },
+    ddClose: () => { B.dd = null; renderFiltrosBib(); },
+    posTog: el => { const p = el.dataset.p; B.f.pos = B.f.pos.includes(p) ? B.f.pos.filter(x => x !== p) : B.f.pos.concat(p); refrescarFiltros(); },
+    posModo: el => { B.f.modo = el.dataset.m; refrescarFiltros(); },
+    posClr: () => { B.f.pos = []; refrescarFiltros(); },
+    fRm: el => { if (el.dataset.p) B.f.pos = B.f.pos.filter(x => x !== el.dataset.p); else B.f[el.dataset.k] = 'Todos'; refrescarFiltros(); },
+    fClr: () => { limpiarFiltros(); B.dd = null; refrescarFiltros(); },
     sel: el => seleccionarBib(el.dataset.id),
     nuevo: () => {
       if (B.draft && B.draft.dirty && B.pendiente !== '__nuevo') { B.pendiente = '__nuevo'; toast('Hay cambios sin guardar. Tocá de nuevo para descartarlos.'); return; }
       B.pendiente = null;
       const base = jug
-        ? { id: '', nombre: '', numero: '', posicion: '', posiciones: [], genero: B.filtro === 'Femenino' ? 'Femenino' : 'Masculino', activo: true, invitado: B.filtro === 'Invitados' }
-        : { id: '', nombre: '', sigla: '', genero: 'Ambos', procedencia: B.filtro === 'Otras provincias' ? 'Otra provincia' : B.filtro === 'Otros países' ? 'Otro país' : 'Buenos Aires', lugar: '' };
+        ? { id: '', nombre: '', numero: '', posicion: '', posiciones: [], genero: B.f.gen === 'Femenino' ? 'Femenino' : 'Masculino', activo: true, invitado: B.f.tipo === 'Invitados' }
+        : { id: '', nombre: '', sigla: '', genero: 'Ambos', procedencia: B.f.proc === 'Otras provincias' ? 'Otra provincia' : B.f.proc === 'Otros países' ? 'Otro país' : 'Buenos Aires', lugar: '' };
       B.draft = draftDe(base, B.tab); B.draft.dirty = true;
       renderGridBib(); renderEditor();
       const n = document.querySelector('[data-f="nombre"]'); if (n) n.focus();
@@ -547,22 +557,70 @@ async function pageBiblioteca(tab) {
 }
 
 function listaBib() { return esJugTab() ? S.bib.jugadores : S.bib.equipos; }
-function visibleBib(it) {
+const FILTROS_JUG = [['gen', 'Género', ['Todos', 'Masculino', 'Femenino']], ['tipo', 'Tipo', ['Todos', 'Plantel', 'Invitados']], ['est', 'Estado', ['Todos', 'Activos', 'Inactivos']]];
+const FILTROS_EQ = [['proc', 'Procedencia', ['Todos', 'Buenos Aires', 'Otras provincias', 'Otros países']], ['gen', 'Género', ['Todos', 'Masculino', 'Femenino']]];
+const MODOS_POS = [['any', 'Cualquiera'], ['all', 'Todas'], ['main', 'Solo principal']];
+function limpiarFiltros() { Object.assign(B.f, { gen: 'Todos', tipo: 'Todos', est: 'Todos', proc: 'Todos', pos: [] }); }
+function pasaFiltro(it, k, v) {
+  if (v === 'Todos') return true;
+  if (k === 'gen') { const g = norm(it.genero); return g === norm(v) || g === 'ambos'; }
+  if (k === 'tipo') return v === 'Invitados' ? !!it.invitado : !it.invitado;
+  if (k === 'est') return v === 'Inactivos' ? it.activo === false : it.activo !== false;
+  if (k === 'proc') return v === 'Buenos Aires' ? esLocal(it) : procKey(it.procedencia) === (v === 'Otras provincias' ? 'Otra provincia' : 'Otro país');
+  return true;
+}
+function pasaPos(it, pos, modo) {
+  if (!pos.length) return true;
+  const l = listaPos(it);
+  if (modo === 'main') return pos.includes(l[0]);
+  return modo === 'all' ? pos.every(p => l.includes(p)) : pos.some(p => l.includes(p));
+}
+function visibleBib(it, skip) {
   const q = norm(B.q);
   if (q && !norm(it.nombre).includes(q) && !norm(it.numero).includes(q) && !norm(it.sigla).includes(q)) return false;
-  if (B.filtro === 'Todos') return true;
-  if (B.filtro === 'Inactivos') return it.activo === false;
-  if (B.filtro === 'Invitados') return !!it.invitado;
-  if (B.filtro === 'Buenos Aires') return esLocal(it);
-  if (B.filtro === 'Otras provincias') return procKey(it.procedencia) === 'Otra provincia';
-  if (B.filtro === 'Otros países') return procKey(it.procedencia) === 'Otro país';
-  const g = norm(it.genero);
-  return g === norm(B.filtro) || g === 'ambos';
+  const jug = esJugTab();
+  for (const [k] of (jug ? FILTROS_JUG : FILTROS_EQ)) if (k !== skip && !pasaFiltro(it, k, B.f[k])) return false;
+  if (jug && skip !== 'pos' && !pasaPos(it, B.f.pos, B.f.modo)) return false;
+  return true;
 }
+function refrescarFiltros() { renderFiltrosBib(); renderGridBib(); }
 function renderFiltrosBib() {
-  const f = esJugTab() ? ['Todos', 'Masculino', 'Femenino', 'Invitados', 'Inactivos'] : ['Todos', 'Buenos Aires', 'Otras provincias', 'Otros países', 'Masculino', 'Femenino'];
-  if (!f.includes(B.filtro)) B.filtro = 'Todos';
-  document.getElementById('libFiltros').innerHTML = f.map(x => `<button type="button" class="pill" data-act="filtro" data-f="${x}" aria-pressed="${B.filtro === x}">${x}</button>`).join('');
+  const jug = esJugTab();
+  const defs = jug ? FILTROS_JUG : FILTROS_EQ;
+  const lista = listaBib();
+  const caret = '<span class="ffcar" aria-hidden="true">▾</span>';
+  let html = defs.map(([k, label, opts]) => {
+    const cnt = v => lista.filter(it => visibleBib(it, k) && pasaFiltro(it, k, v)).length;
+    return `<div class="ffdd${B.dd === k ? ' on' : ''}${B.f[k] !== 'Todos' ? ' act' : ''}">
+      <button type="button" class="ffbtn" data-act="ddOpen" data-k="${k}" aria-expanded="${B.dd === k}"><span class="ffk">${label}:</span>${esc(B.f[k])}${caret}</button>
+      ${B.dd === k ? `<div class="ffmenu" role="listbox">${opts.map(v => `<button type="button" class="ffopt" role="option" data-act="ddSet" data-k="${k}" data-v="${esc(v)}" aria-selected="${B.f[k] === v}"><span class="ffck"></span>${esc(v)}<span class="ffc">${cnt(v)}</span></button>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  if (jug) {
+    const P = B.f.pos;
+    const cntP = p => lista.filter(it => visibleBib(it, 'pos') && (B.f.modo === 'main' ? listaPos(it)[0] === p : listaPos(it).includes(p))).length;
+    const chip = (p, d) => `<button type="button" class="ffpc${d ? ' d' : ''}" data-act="posTog" data-p="${p}" aria-pressed="${P.includes(p)}">${p}<span class="ffc">${cntP(p)}</span></button>`;
+    const lbl = P.length ? (P.length <= 2 ? P.join(', ') : P.length + ' marcadas') : 'Todas';
+    html += `<div class="ffdd${B.dd === 'pos' ? ' on' : ''}${P.length ? ' act' : ''}">
+      <button type="button" class="ffbtn" data-act="ddOpen" data-k="pos" aria-expanded="${B.dd === 'pos'}"><span class="ffk">Posiciones:</span>${esc(lbl)}${P.length ? `<span class="ffn">${P.length}</span>` : ''}${caret}</button>
+      ${B.dd === 'pos' ? `<div class="ffmenu ffpos">
+        <div class="ffseg" role="group" aria-label="Cómo combinar">${MODOS_POS.map(([m, l]) => `<button type="button" data-act="posModo" data-m="${m}" aria-pressed="${B.f.modo === m}">${l}</button>`).join('')}</div>
+        <div class="ffph"><i></i>Ataque</div><div class="ffpcs">${POS_ATQ.map(([p]) => chip(p, false)).join('')}</div>
+        <div class="ffph"><i class="d"></i>Defensa</div><div class="ffpcs">${POS_DEF.map(([p]) => chip(p, true)).join('')}</div>
+        <div class="fffoot"><button type="button" class="fflnk" data-act="posClr">Limpiar</button><button type="button" class="btn primary sm" data-act="ddClose">Ver ${lista.filter(it => visibleBib(it)).length}</button></div>
+      </div>` : ''}
+    </div>`;
+  }
+  document.getElementById('libFiltros').innerHTML = html;
+  const act = defs.filter(([k]) => B.f[k] !== 'Todos').map(([k]) => `<span class="ffchip">${esc(B.f[k])}<button type="button" data-act="fRm" data-k="${k}" aria-label="Quitar ${esc(B.f[k])}">✕</button></span>`)
+    .concat(jug ? B.f.pos.map(p => `<span class="ffchip"><b>Pos</b> ${p}<button type="button" data-act="fRm" data-p="${p}" aria-label="Quitar ${p}">✕</button></span>`) : []);
+  const tot = lista.length, vis = lista.filter(it => visibleBib(it)).length;
+  document.getElementById('libChips').innerHTML = act.length ? act.join('') + `<button type="button" class="fflnk" data-act="fClr">Limpiar filtros</button><span class="small muted">${vis} de ${tot} ${jug ? 'jugadores' : 'equipos'}</span>` : '';
+}
+if (!window.__ffOut) {
+  window.__ffOut = true;
+  document.addEventListener('click', e => { if (B.dd && !e.target.closest('.ffdd')) { B.dd = null; if (document.getElementById('libFiltros')) renderFiltrosBib(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && B.dd) { B.dd = null; if (document.getElementById('libFiltros')) renderFiltrosBib(); } });
 }
 function renderGridBib() {
   const jug = esJugTab();
@@ -584,7 +642,7 @@ function renderGridBib() {
     return `<button type="button" class="lib-card" data-act="sel" data-id="${esc(it.id)}" aria-pressed="${!!(d && d.id === it.id)}">
       <span class="ph${jug ? '' : ' logo'}${it.activo === false ? ' off' : ''}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="ini">${esc(jug ? iniciales(it.nombre) : (it.sigla || iniciales(it.nombre)))}</span>`}
       ${jug && it.numero ? `<span class="dorsal">#${esc(it.numero)}</span>` : ''}</span>
-      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span>${jug && listaPos(it).length ? `<span class="ptags">${posTags(it)}</span>` : ''}${jug && it.invitado ? tagInvitado : ''}</button>`;
+      <span class="name">${esc(it.nombre)}</span><span class="small muted">${esc(sub)}</span>${jug && listaPos(it).length ? `<span class="ptags">${posTags(it, B.f.pos)}</span>` : ''}${jug && it.invitado ? tagInvitado : ''}</button>`;
   }).join('');
   document.getElementById('libGrid').innerHTML = html || '<p class="empty" style="grid-column:1/-1">No hay resultados.</p>';
 }

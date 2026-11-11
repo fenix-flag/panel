@@ -307,3 +307,48 @@ table.t tr.click:hover { background: #1A1B20; }
 .ptag.d { color: #B8B2F5; border-color: rgba(184,178,245,.4); }
 .posgrp-t { flex-basis: 100%; }
 .poschip { width: auto !important; flex: none !important; flex-direction: row !important; }
+
+/* ---- Filtros desplegables de la Biblioteca ---- */
+.ffbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.ffdd { position: relative; }
+.ffbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; color: var(--ink); font: 600 14px var(--body); cursor: pointer; white-space: nowrap; }
+.ffk { color: var(--muted); }
+.ffcar { color: var(--muted); font-size: 11px; }
+.ffn { font: 700 11px var(--mono); background: var(--accent); color: var(--bg); border-radius: 10px; padding: 1px 7px; }
+.ffdd.act .ffbtn { border-color: rgba(249,115,22,.55); }
+.ffdd.on .ffbtn { border-color: var(--accent); }
+.ffmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 210px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: 0 12px 30px rgba(0,0,0,.5); padding: 6px; display: flex; flex-direction: column; }
+.ffopt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 10px; border: 0; border-radius: 4px; background: none; color: var(--ink); font: 500 14px var(--body); text-align: left; cursor: pointer; }
+.ffopt:hover { background: var(--line); }
+.ffck { width: 16px; height: 16px; border: 1.5px solid var(--line-2); border-radius: 50%; flex: none; }
+.ffopt[aria-selected="true"] .ffck { border-color: var(--accent); background: radial-gradient(var(--accent) 45%, transparent 50%); }
+.ffc { margin-left: auto; font: 500 12px var(--mono); color: var(--dim); }
+.ffpos { min-width: 300px; padding: 12px; }
+.ffseg { display: flex; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+.ffseg button { flex: 1; padding: 8px 4px; border: 0; background: none; color: var(--muted); font: 600 12px var(--body); cursor: pointer; }
+.ffseg button[aria-pressed="true"] { background: var(--line); color: var(--ink); }
+.ffph { font: 800 12px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 2px 8px; display: flex; align-items: center; gap: 6px; }
+.ffph i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.ffph i.d { background: #B8B2F5; }
+.ffpcs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ffpc { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--bg); color: var(--muted); font: 700 12px var(--mono); cursor: pointer; }
+.ffpc .ffc { margin-left: 0; }
+.ffpc[aria-pressed="true"] { border-color: var(--accent); background: rgba(249,115,22,.12); color: var(--ink); }
+.ffpc.d[aria-pressed="true"] { border-color: #B8B2F5; background: rgba(184,178,245,.12); }
+.fffoot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+.fflnk { background: none; border: 0; padding: 4px; color: var(--muted); font: 600 13px var(--body); text-decoration: underline; cursor: pointer; }
+.fflnk:hover { color: var(--ink); }
+.ffchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 2px; }
+.ffchips:empty { display: none; }
+.ffchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-2); font-size: 13px; }
+.ffchip b { font-weight: 600; color: var(--muted); }
+.ffchip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.ffchip button:hover { background: var(--line-2); color: var(--ink); }
+.ptag.hit { outline: 2px solid var(--ink); outline-offset: 1px; }
+@media (max-width: 700px) {
+  .ffbar { width: 100%; }
+  .ffdd { flex: 1 1 45%; }
+  .ffbtn { width: 100%; }
+  .ffmenu { min-width: 100%; }
+  .ffpos { min-width: min(300px, 90vw); }
+}
