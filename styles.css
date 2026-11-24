@@ -352,3 +352,14 @@ table.t tr.click:hover { background: #1A1B20; }
   .ffmenu { min-width: 100%; }
   .ffpos { min-width: min(300px, 90vw); }
 }
+
+/* Fixture: resultado en la misma fila */
+.fxm { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.fxm .team { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fxm .team.r { text-align: right; }
+.input.score { border-color: var(--line-2, #34363D); }
+.input.score:focus { border-color: var(--accent); }
+.input.score.chg { border-color: var(--accent); background: rgba(249,115,22,.12); }
+.resbar { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface, #16171B); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.resbar span { flex: 1; font-weight: 700; }
+.resbar[hidden] { display: none; }

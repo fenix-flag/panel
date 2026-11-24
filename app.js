@@ -1069,7 +1069,7 @@ async function crearTorneoWizard(btn) {
 /* =====================================================================
  *  TORNEO
  * ===================================================================== */
-const T = { id: null, tab: 'resumen', form: null, editRes: null, borrar: null, plantel: null, equipos: null, agregarJ: '', agregarE: '', ordenJ: 'numero', ascJ: true };
+const T = { id: null, tab: 'resumen', form: null, editRes: null, resDraft: {}, borrar: null, plantel: null, equipos: null, agregarJ: '', agregarE: '', ordenJ: 'numero', ascJ: true };
 // Orden del plantel (mismo criterio que la Biblioteca): número, nombre o posición; vacíos al final.
 function ordenarPlantel(lista, campo, asc) {
   const dir = asc ? 1 : -1;
@@ -1214,7 +1214,7 @@ const tieneResultado = p => p.gl !== '' && p.gv !== '' && p.gl != null && p.gv !
 
 async function pageTorneo(id, tab) {
   if (needsCfg()) { view.innerHTML = pageHead('Torneo', 'Torneo') + cfgCard(); return; }
-  if (T.id !== id) Object.assign(T, { id: id, form: null, editRes: null, borrar: null, plantel: null, equipos: null });
+  if (T.id !== id) Object.assign(T, { id: id, form: null, editRes: null, resDraft: {}, borrar: null, plantel: null, equipos: null });
   T.tab = TABS_T.some(t => t[0] === tab) ? tab : 'resumen';
   const [data] = await Promise.all([getTorneo(id), getBib().catch(() => null)]);
   if (!T.form) { T.form = { jornada: '', dia: '', hora: '', local: '', visitante: '', cancha: '', instancia: 'Regular' }; T.jornadaOtra = false; }
@@ -1299,6 +1299,9 @@ function tabFixture(data) {
   const filas = data.fixture.map((p, i) => {
     const fenix = esFenix(p.local) || esFenix(p.visitante);
     const link = fenix ? linkAnotador(data, p) : '';
+    const dr = T.resDraft[p.id], vGL = dr ? dr.gl : (p.gl ?? ''), vGV = dr ? dr.gv : (p.gv ?? '');
+    const sc = (k, v, eq) => `<input class="input score${dr ? ' chg' : ''}" data-rs="${esc(p.id)}" data-k="${k}" inputmode="numeric" maxlength="3" value="${esc(v)}" placeholder="–" aria-label="Puntos de ${esc(eq)}">`;
+    const partidoH = `<div class="fxm"><span class="team r">${esc(p.local)}</span>${sc('gl', vGL, p.local)}<span class="muted">–</span>${sc('gv', vGV, p.visitante)}<span class="team">${esc(p.visitante)}</span></div>`;
     const editando = T.editRes === p.id;
     const res = editando
       ? `<span class="row" style="gap:6px;flex-wrap:nowrap"><input class="input score" id="rl" inputmode="numeric" value="${esc(p.gl)}" aria-label="Puntos de ${esc(p.local)}"><span class="muted">–</span><input class="input score" id="rv" inputmode="numeric" value="${esc(p.gv)}" aria-label="Puntos de ${esc(p.visitante)}">
@@ -1310,9 +1313,8 @@ function tabFixture(data) {
       : `<button class="btn icon" type="button" data-act="preBorrar" data-id="${esc(p.id)}" aria-label="Quitar ${esc(p.local)} vs ${esc(p.visitante)}">${ICON.x}</button>`;
     return `<tr class="${fenix ? 'fenix' : ''}">
       <td>${esc(p.jornada || '—')}</td><td class="mono">${esc(p.dia || '—')}</td><td class="mono muted">${esc(p.hora || '—')}</td>
-      <td><span class="team">${esc(p.local)}</span><span class="vs">vs</span><span class="team">${esc(p.visitante)}</span></td>
+      <td>${partidoH}</td>
       <td class="muted">${esc(p.cancha || '—')}</td><td class="muted small">${esc(p.instancia || '')}</td>
-      <td>${res}</td>
       <td>${fenix ? (link ? `<a href="${esc(link)}" target="_blank" rel="noopener" style="font-weight:600">Abrir anotador</a>` : '<a class="small" href="#/config">Configurar</a>') : '<span style="color:#55575E">—</span>'}</td>
       <td class="r">${borrar}</td></tr>`;
   }).join('');
@@ -1333,12 +1335,15 @@ function tabFixture(data) {
       <div class="row"><button class="btn primary" type="button" data-act="agregarPartido">+ Agregar partido</button><span class="small muted">La fecha, el día y la cancha quedan cargados para el próximo.</span></div>
     </section>
     ${data.fixture.length ? `<div class="stack"><div class="row" style="justify-content:space-between;align-items:center"><h2 class="h3">Fixture · ${data.fixture.length} partidos</h2>${data.fixture.some(p => esMarcador(p.local) || esMarcador(p.visitante)) ? `<button class="btn primary" type="button" data-act="armarCruces">Armar cruces</button>` : ''}</div>
-      <div class="table-wrap"><table class="t" style="min-width:980px"><thead><tr><th>Fecha</th><th>Día</th><th>Hora</th><th>Partido</th><th>Cancha</th><th>Instancia</th><th>Resultado</th><th>Anotador</th><th><span class="sr">Quitar</span></th></tr></thead>
+      <div class="table-wrap"><table class="t" style="min-width:980px"><thead><tr><th>Fecha</th><th>Día</th><th>Hora</th><th>Partido · resultado</th><th>Cancha</th><th>Instancia</th><th>Anotador</th><th><span class="sr">Quitar</span></th></tr></thead>
       <tbody>${filas}</tbody></table></div>
-      <span class="small muted">El resultado de los partidos de FENIX lo completa el anotador; el de los demás lo cargás acá y va directo a Posiciones.</span></div>`
+      <div class="resbar" id="resBar" ${Object.keys(T.resDraft).length ? '' : 'hidden'}><span id="resN">${resDraftTxt()}</span><button class="btn" type="button" data-act="descartarRes">Descartar</button><button class="btn primary" type="button" data-act="guardarResultados">Guardar resultados</button></div>
+      <span class="small muted">Escribí los puntos directo en cada partido (Enter pasa al siguiente) y tocá <b>Guardar resultados</b>. Los de FENIX también los completa el anotador al finalizar.</span></div>`
       : '<p class="empty">Todavía no hay partidos cargados.</p>'}
   </div>`;
 }
+
+function resDraftTxt() { const n = Object.keys(T.resDraft).length; return n + (n === 1 ? ' resultado sin guardar' : ' resultados sin guardar'); }
 
 function calcularPosiciones(data) {
   const cfg = data.config || { puntosG: 3, puntosE: 1, puntosP: 0 };
@@ -1462,6 +1467,17 @@ function bindTorneo() {
     return r;
   });
   view.oninput = e => {
+    if (e.target.dataset.rs !== undefined) {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3);
+      const id = e.target.dataset.rs, row = e.target.closest('tr');
+      const gl = row.querySelector('[data-k="gl"]').value, gv = row.querySelector('[data-k="gv"]').value;
+      const p = data().fixture.find(x => x.id === id) || {};
+      const same = String(p.gl ?? '') === gl && String(p.gv ?? '') === gv;
+      if (same) delete T.resDraft[id]; else T.resDraft[id] = { gl: gl, gv: gv };
+      row.querySelectorAll('[data-rs]').forEach(i => i.classList.toggle('chg', !same));
+      const bar = document.getElementById('resBar'); if (bar) { bar.hidden = !Object.keys(T.resDraft).length; document.getElementById('resN').textContent = resDraftTxt(); }
+      return;
+    }
     if (e.target.dataset.jnum) { const n = parseInt(e.target.value, 10); if (n >= 1) T.form.jornada = 'Fecha ' + n; return; }
     const k = e.target.dataset.fx;
     if (k) { T.form[k] = e.target.value; return; }
@@ -1491,6 +1507,12 @@ function bindTorneo() {
     if (e.target.id === 'ordenJ') { T.ordenJ = e.target.value; T.ascJ = true; rerender(); }
   };
   view.onkeydown = e => {
+    if (e.key === 'Enter' && e.target.dataset.rs !== undefined) {
+      e.preventDefault();
+      const all = [...view.querySelectorAll('[data-rs]')], i = all.indexOf(e.target);
+      if (all[i + 1]) { all[i + 1].focus(); all[i + 1].select(); } else { const b = view.querySelector('[data-act="guardarResultados"]'); if (b) b.focus(); }
+      return;
+    }
     if (e.key === 'Enter' && (e.target.id === 'rl' || e.target.id === 'rv')) { const b = view.querySelector('[data-act="guardarRes"]'); if (b) b.click(); }
     if (e.key === 'Escape' && T.editRes) { T.editRes = null; rerender(); }
   };
@@ -1533,6 +1555,17 @@ function bindTorneo() {
       const gl = document.getElementById('rl').value.trim(), gv = document.getElementById('rv').value.trim();
       if ((gl === '') !== (gv === '') || (gl !== '' && (isNaN(Number(gl)) || isNaN(Number(gv))))) { toast('Poné los puntos de los dos equipos (o dejá los dos vacíos para borrar).', 'err'); return; }
       guardarYRefrescar(el, '…', 'guardarResultado', { partido: el.dataset.id, gl: gl, gv: gv }, () => { T.editRes = null; toast('Resultado guardado', 'ok'); });
+    },
+    descartarRes: () => { T.resDraft = {}; rerender(); },
+    guardarResultados: el => {
+      const malos = Object.entries(T.resDraft).filter(([, v]) => (v.gl === '') !== (v.gv === ''));
+      if (malos.length) {
+        const p = data().fixture.find(x => x.id === malos[0][0]) || {};
+        toast(`Falta un puntaje en ${p.local || ''} vs ${p.visitante || ''}: poné los dos o dejá los dos vacíos.`, 'err'); return;
+      }
+      const n = Object.keys(T.resDraft).length; if (!n) return;
+      const partidos = data().fixture.map(p => { const d = T.resDraft[p.id]; return Object.assign({}, p, d ? { gl: d.gl, gv: d.gv } : {}); });
+      guardarYRefrescar(el, 'Guardando…', 'guardarFixture', { partidos: partidos }, () => { T.resDraft = {}; toast(n === 1 ? 'Resultado guardado' : n + ' resultados guardados', 'ok'); });
     },
     preBorrar: el => { T.borrar = el.dataset.id; rerender(); },
     borrar: el => {
